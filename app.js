@@ -50,6 +50,8 @@ const state = {
 
 const els = {
   body: document.body,
+  mobileCategoryBtn: document.getElementById("mobileCategoryBtn"),
+  mobileSidebarBackdrop: document.getElementById("mobileSidebarBackdrop"),
   categoryList: document.getElementById("categoryList"),
   toggleEditBtn: document.getElementById("toggleEditBtn"),
   addCategoryBtn: document.getElementById("addCategoryBtn"),
@@ -264,7 +266,16 @@ function saveState() {
 function setSelectedCategory(id) {
   state.selectedCategory = id;
   state.visibleCount = 12;
+  closeMobileSidebar();
   render();
+}
+
+function openMobileSidebar() {
+  els.body.classList.add("mobile-sidebar-open");
+}
+
+function closeMobileSidebar() {
+  els.body.classList.remove("mobile-sidebar-open");
 }
 
 function createCategoryButton(cat, isChild = false) {
@@ -927,6 +938,12 @@ els.toggleEditBtn.addEventListener("click", () => {
   state.editing = !state.editing;
   renderCategories();
 });
+if (els.mobileCategoryBtn) {
+  els.mobileCategoryBtn.addEventListener("click", openMobileSidebar);
+}
+if (els.mobileSidebarBackdrop) {
+  els.mobileSidebarBackdrop.addEventListener("click", closeMobileSidebar);
+}
 els.addCategoryBtn.addEventListener("click", addCategory);
 els.addChildBtn.addEventListener("click", addChildCategory);
 els.searchInput.addEventListener("input", () => {
