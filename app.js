@@ -1,0 +1,969 @@
+const STORAGE = {
+  sites: "reference-user-sites",
+  pending: "reference-pending-sites",
+  categories: "reference-categories",
+  statuses: "reference-site-statuses",
+  saved: "reference-saved"
+};
+
+const DEFAULT_CATEGORIES = [
+  { id: "medical", name: "醫療診所", children: ["中醫", "牙科", "身心科", "醫美/皮膚", "物理/語言/徒手治療/復健", "其他"] },
+  { id: "medical-equipment", name: "醫療器材", children: [] },
+  { id: "care", name: "居家照護/長照服務/產後照護", children: [] },
+  { id: "fitness", name: "運動健身", children: [] },
+  { id: "metal", name: "鋁鐵門窗/隔音門窗/隔熱紙/捲門", children: [] },
+  { id: "pet", name: "寵物繁殖/買賣/住宿/美容", children: [] },
+  { id: "pet-hospital", name: "寵物醫院", children: [] },
+  { id: "car", name: "汽機車美容/改裝/維修", children: ["美容/維修/改裝/配件/買賣", "新車/中古車買賣", "機車改裝/保養/道路救援/買賣", "租車"] },
+  { id: "hardware", name: "五金/包材/加工產品/電機產品", children: [] },
+  { id: "home", name: "生活服務", children: ["清潔", "淨水相關", "鑰匙/開鎖", "搬家", "其他"] },
+  { id: "3c", name: "3C", children: [] },
+  { id: "glasses", name: "眼鏡", children: [] },
+  { id: "travel", name: "住宿/旅遊/玩樂", children: [] },
+  { id: "printing", name: "3D列印", children: [] },
+  { id: "video", name: "影像拍攝", children: [] },
+  { id: "water", name: "浮水相關", children: [] },
+  { id: "finance", name: "金融與專業服務（當舖、會計與顧問）", children: [] },
+  { id: "interior", name: "室內設計與裝修", children: [] },
+  { id: "beauty", name: "美容保養", children: [] },
+  { id: "nails", name: "美容美甲", children: [] },
+  { id: "hair", name: "美髮", children: [] },
+  { id: "food", name: "食品零售", children: [] },
+  { id: "renovation", name: "房屋裝潢/裝修/出租/不動產", children: [] },
+  { id: "flower", name: "花藝設計/植栽", children: [] },
+  { id: "logistics", name: "運輸物流（搬家服務）", children: [] },
+  { id: "music", name: "樂器零售與教學", children: [] }
+];
+
+const state = {
+  categories: [],
+  sites: [],
+  pending: [],
+  statuses: {},
+  saved: new Set(),
+  selectedCategory: "all",
+  search: "",
+  visibleCount: 12,
+  editing: false,
+  openCategories: new Set()
+};
+
+const els = {
+  body: document.body,
+  categoryList: document.getElementById("categoryList"),
+  toggleEditBtn: document.getElementById("toggleEditBtn"),
+  addCategoryBtn: document.getElementById("addCategoryBtn"),
+  addChildBtn: document.getElementById("addChildBtn"),
+  searchInput: document.getElementById("searchInput"),
+  resultTitle: document.getElementById("resultTitle"),
+  resultCount: document.getElementById("resultCount"),
+  siteList: document.getElementById("siteList"),
+  loadMoreBtn: document.getElementById("loadMoreBtn"),
+  checkVisibleBtn: document.getElementById("checkVisibleBtn"),
+  backupInput: document.getElementById("backupInput"),
+  exportBackupBtn: document.getElementById("exportBackupBtn"),
+  importInput: document.getElementById("importInput"),
+  importStatus: document.getElementById("importStatus"),
+  pendingCount: document.getElementById("pendingCount"),
+  pendingList: document.getElementById("pendingList"),
+  clearPendingBtn: document.getElementById("clearPendingBtn")
+};
+
+function slug(text) {
+  return String(text || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/.*$/, "")
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
+    .replace(/^-+|-+$/g, "") || `cat-${Date.now()}`;
+}
+
+function makeId(prefix = "id") {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function readJson(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJson(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function normalizeDomain(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/\/+$/, "")
+    .split("/")[0]
+    .toLowerCase();
+}
+
+function ensureUrl(domain) {
+  const clean = normalizeDomain(domain);
+  return clean ? `https://${clean}` : "";
+}
+
+function normalizeCategory(raw, parentName = "") {
+  if (typeof raw === "string") {
+    return { id: slug(`${parentName}-${raw}`), name: raw.trim(), children: [] };
+  }
+
+  const name = String(raw?.name || raw?.label || raw?.title || "未命名分類").trim();
+  const id = String(raw?.id || slug(`${parentName}-${name}`));
+  const childrenRaw = Array.isArray(raw?.children) ? raw.children : [];
+  return {
+    id,
+    name,
+    children: childrenRaw.map((child) => normalizeCategory(child, name))
+  };
+}
+
+function normalizeCategories(raw) {
+  const source = Array.isArray(raw) && raw.length ? raw : DEFAULT_CATEGORIES;
+  const categories = source
+    .map((cat) => normalizeCategory(cat))
+    .filter((cat) => cat.id !== "all" && cat.name !== "所有案例");
+  return ensureUniqueCategoryIds(categories);
+}
+
+function ensureUniqueCategoryIds(categories) {
+  const used = new Set();
+
+  const uniqueId = (preferred, name, parentName = "") => {
+    let base = String(preferred || slug(`${parentName}-${name}`));
+    if (!base || used.has(base)) {
+      base = slug(`${parentName}-${name}`);
+    }
+
+    let id = base;
+    let index = 2;
+    while (used.has(id)) {
+      id = `${base}-${index}`;
+      index += 1;
+    }
+
+    used.add(id);
+    return id;
+  };
+
+  return categories.map((cat) => {
+    const parent = {
+      ...cat,
+      id: uniqueId(cat.id, cat.name),
+      children: []
+    };
+
+    parent.children = cat.children.map((child) => ({
+      ...child,
+      id: uniqueId(child.id, child.name, parent.name)
+    }));
+
+    return parent;
+  });
+}
+
+function flattenCategories(categories = state.categories) {
+  const rows = [];
+  categories.forEach((cat) => {
+    rows.push({ id: cat.id, name: cat.name, label: cat.name, parentId: "", parentName: "", depth: 0 });
+    cat.children.forEach((child) => {
+      rows.push({
+        id: child.id,
+        name: child.name,
+        label: `${cat.name}（${child.name}）`,
+        parentId: cat.id,
+        parentName: cat.name,
+        depth: 1
+      });
+    });
+  });
+  return rows;
+}
+
+function findCategory(id, categories = state.categories) {
+  for (const cat of categories) {
+    if (cat.id === id) return { category: cat, parent: null };
+    const child = cat.children.find((item) => item.id === id);
+    if (child) return { category: child, parent: cat };
+  }
+  return null;
+}
+
+function categoryLabel(idOrName) {
+  if (!idOrName) return "未分類";
+  const found = flattenCategories().find((cat) => {
+    return cat.id === idOrName || cat.name === idOrName || cat.label === idOrName;
+  });
+  return found ? found.label : String(idOrName);
+}
+
+function resolveCategoryId(value) {
+  if (!value) return "";
+  const flat = flattenCategories();
+  const found = flat.find((cat) => cat.id === value || cat.name === value || cat.label === value);
+  return found ? found.id : value;
+}
+
+function normalizeSite(raw) {
+  const name = String(raw?.name || raw?.title || raw?.siteName || raw?.["網站名稱"] || "").trim();
+  const domain = normalizeDomain(raw?.domain || raw?.url || raw?.href || raw?.["域名"] || "");
+  if (!name || !domain) return null;
+  return {
+    id: String(raw?.id || makeId("site")),
+    name,
+    domain,
+    url: raw?.url?.startsWith?.("http") ? raw.url : ensureUrl(domain),
+    categoryId: resolveCategoryId(raw?.categoryId || raw?.category || raw?.categoryName || ""),
+    addedAt: raw?.addedAt || new Date().toISOString()
+  };
+}
+
+function uniqueSites(sites) {
+  const map = new Map();
+  sites.forEach((site) => {
+    if (!site?.domain) return;
+    map.set(site.domain, site);
+  });
+  return Array.from(map.values());
+}
+
+function loadState() {
+  state.categories = normalizeCategories(readJson(STORAGE.categories, []));
+  state.sites = uniqueSites((readJson(STORAGE.sites, []) || []).map(normalizeSite).filter(Boolean));
+  state.pending = uniqueSites((readJson(STORAGE.pending, []) || []).map(normalizeSite).filter(Boolean));
+  state.statuses = readJson(STORAGE.statuses, {}) || {};
+  Object.keys(state.statuses).forEach((siteId) => {
+    if (state.statuses[siteId] === "manual") {
+      delete state.statuses[siteId];
+    }
+  });
+  state.saved = new Set(readJson(STORAGE.saved, []) || []);
+  state.categories.forEach((cat) => {
+    if (cat.children.length) state.openCategories.add(cat.id);
+  });
+  saveState();
+}
+
+function saveState() {
+  writeJson(STORAGE.categories, state.categories);
+  writeJson(STORAGE.sites, state.sites);
+  writeJson(STORAGE.pending, state.pending);
+  writeJson(STORAGE.statuses, state.statuses);
+  writeJson(STORAGE.saved, Array.from(state.saved));
+}
+
+function setSelectedCategory(id) {
+  state.selectedCategory = id;
+  state.visibleCount = 12;
+  render();
+}
+
+function createCategoryButton(cat, isChild = false) {
+  const row = document.createElement("div");
+  row.className = isChild ? "child-row" : "category-row";
+  row.draggable = state.editing;
+  row.dataset.id = cat.id;
+  row.classList.toggle("active", state.selectedCategory === cat.id);
+
+  const nameBtn = document.createElement("button");
+  nameBtn.className = isChild ? "child-name" : "category-name";
+  nameBtn.type = "button";
+  nameBtn.textContent = isChild ? `（${cat.name}）` : cat.name;
+  nameBtn.addEventListener("click", () => setSelectedCategory(cat.id));
+
+  const tools = document.createElement("div");
+  tools.className = "category-tools";
+
+  const editBtn = toolButton("編", () => renameCategory(cat.id));
+  const upBtn = toolButton("上", () => moveCategory(cat.id, -1));
+  const downBtn = toolButton("下", () => moveCategory(cat.id, 1));
+  const deleteBtn = toolButton("刪", () => deleteCategory(cat.id), "delete-btn");
+  tools.append(editBtn, upBtn, downBtn, deleteBtn);
+
+  row.append(nameBtn, tools);
+  row.addEventListener("dragstart", (event) => {
+    event.dataTransfer.setData("text/plain", cat.id);
+  });
+  row.addEventListener("dragover", (event) => {
+    const dragType = event.dataTransfer.types.includes("application/x-reference-site")
+      || event.dataTransfer.types.includes("application/x-pending-site")
+      || event.dataTransfer.types.includes("text/plain");
+    if (state.editing || dragType) {
+      event.preventDefault();
+      row.classList.add("drop-target");
+    }
+  });
+  row.addEventListener("dragleave", () => {
+    row.classList.remove("drop-target");
+  });
+  row.addEventListener("drop", (event) => {
+    event.preventDefault();
+    row.classList.remove("drop-target");
+
+    const siteId = event.dataTransfer.getData("application/x-reference-site");
+    const pendingId = event.dataTransfer.getData("application/x-pending-site");
+    const draggedId = event.dataTransfer.getData("text/plain");
+
+    if (siteId) {
+      moveSiteToCategory(siteId, cat.id);
+      return;
+    }
+
+    if (pendingId) {
+      classifyPending(pendingId, cat.id);
+      return;
+    }
+
+    if (state.editing && draggedId && draggedId !== cat.id) {
+      dropCategory(draggedId, cat.id);
+    }
+  });
+
+  return row;
+}
+
+function toolButton(text, handler, className = "") {
+  const btn = document.createElement("button");
+  btn.className = `tool-btn ${className}`;
+  btn.type = "button";
+  btn.textContent = text;
+  btn.addEventListener("click", handler);
+  return btn;
+}
+
+function renderCategories() {
+  els.body.classList.toggle("editing", state.editing);
+  els.toggleEditBtn.textContent = state.editing ? "完成編輯" : "編輯分類";
+  els.categoryList.innerHTML = "";
+
+  const allRow = document.createElement("button");
+  allRow.className = `category-row category-name ${state.selectedCategory === "all" ? "active" : ""}`;
+  allRow.type = "button";
+  allRow.textContent = "所有案例";
+  allRow.addEventListener("click", () => setSelectedCategory("all"));
+  els.categoryList.append(allRow);
+
+  state.categories.forEach((cat) => {
+    const row = createCategoryButton(cat);
+    const toggle = document.createElement("button");
+    toggle.className = "category-name";
+    toggle.type = "button";
+    toggle.textContent = cat.children.length ? (state.openCategories.has(cat.id) ? "⌃" : "›") : "";
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (state.openCategories.has(cat.id)) state.openCategories.delete(cat.id);
+      else state.openCategories.add(cat.id);
+      renderCategories();
+    });
+    row.insertBefore(toggle, row.lastChild);
+    els.categoryList.append(row);
+
+    if (cat.children.length && state.openCategories.has(cat.id)) {
+      cat.children.forEach((child) => els.categoryList.append(createCategoryButton(child, true)));
+    }
+  });
+}
+
+function renameCategory(id) {
+  const found = findCategory(id);
+  if (!found) return;
+  const nextName = prompt("請輸入新的分類名稱", found.category.name);
+  if (!nextName || !nextName.trim()) return;
+  found.category.name = nextName.trim();
+  saveState();
+  render();
+}
+
+function addCategory() {
+  const name = prompt("請輸入主分類名稱");
+  if (!name || !name.trim()) return;
+  const category = { id: makeId("cat"), name: name.trim(), children: [] };
+  state.categories.push(category);
+  setSelectedCategory(category.id);
+}
+
+function addChildCategory() {
+  const parentId = state.selectedCategory === "all" ? state.categories[0]?.id : state.selectedCategory;
+  const found = findCategory(parentId);
+  const parent = found?.parent || found?.category || state.categories[0];
+  if (!parent) return;
+  const name = prompt(`新增到「${parent.name}」底下，請輸入子分類名稱`);
+  if (!name || !name.trim()) return;
+  const child = { id: makeId("sub"), name: name.trim(), children: [] };
+  parent.children.push(child);
+  state.openCategories.add(parent.id);
+  setSelectedCategory(child.id);
+}
+
+function deleteCategory(id) {
+  const label = categoryLabel(id);
+  if (!confirm(`確定刪除「${label}」？此分類底下的參考站會改成未分類。`)) return;
+  state.categories = state.categories
+    .map((cat) => ({ ...cat, children: cat.children.filter((child) => child.id !== id) }))
+    .filter((cat) => cat.id !== id);
+  state.sites.forEach((site) => {
+    if (site.categoryId === id) site.categoryId = "";
+  });
+  if (state.selectedCategory === id) state.selectedCategory = "all";
+  saveState();
+  render();
+}
+
+function moveCategory(id, direction) {
+  const found = findCategory(id);
+  if (!found) return;
+  const list = found.parent ? found.parent.children : state.categories;
+  const index = list.findIndex((item) => item.id === id);
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= list.length) return;
+  [list[index], list[nextIndex]] = [list[nextIndex], list[index]];
+  saveState();
+  render();
+}
+
+function dropCategory(draggedId, targetId) {
+  const dragged = findCategory(draggedId);
+  const target = findCategory(targetId);
+  if (!dragged || !target || target.parent) return;
+
+  const sourceList = dragged.parent ? dragged.parent.children : state.categories;
+  const index = sourceList.findIndex((item) => item.id === draggedId);
+  const [item] = sourceList.splice(index, 1);
+  item.children = item.children || [];
+  target.category.children.push(item);
+  state.openCategories.add(target.category.id);
+  saveState();
+  render();
+}
+
+function filteredSites() {
+  const query = state.search.trim().toLowerCase();
+  return state.sites.filter((site) => {
+    const categoryText = categoryLabel(site.categoryId).toLowerCase();
+    const text = `${site.name} ${site.domain} ${categoryText}`.toLowerCase();
+    const categoryMatch = state.selectedCategory === "all" || site.categoryId === state.selectedCategory;
+    return categoryMatch && (!query || text.includes(query));
+  });
+}
+
+function renderSites() {
+  const sites = filteredSites();
+  const visible = sites.slice(0, state.visibleCount);
+  const label = state.selectedCategory === "all" ? "所有案例" : categoryLabel(state.selectedCategory);
+  els.resultTitle.textContent = label;
+  els.resultCount.textContent = `${sites.length} Results`;
+  els.siteList.innerHTML = "";
+
+  if (!visible.length) {
+    els.siteList.innerHTML = '<div class="empty-state">目前沒有符合的參考站。若剛下載備份，請用右側「上傳備份 JSON」還原。</div>';
+  } else {
+    visible.forEach((site) => els.siteList.append(createSiteCard(site)));
+  }
+
+  els.loadMoreBtn.style.display = sites.length > state.visibleCount ? "block" : "none";
+}
+
+function createSiteCard(site) {
+  const card = document.createElement("article");
+  card.className = "site-card";
+  card.draggable = true;
+  card.addEventListener("dragstart", (event) => {
+    event.dataTransfer.setData("application/x-reference-site", site.id);
+    event.dataTransfer.effectAllowed = "move";
+  });
+
+  const link = document.createElement("a");
+  link.className = "site-link";
+  link.href = site.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+
+  const icon = document.createElement("div");
+  icon.className = "site-icon";
+  icon.textContent = "◎";
+  const info = document.createElement("div");
+  const name = document.createElement("div");
+  name.className = "site-name";
+  name.textContent = site.name;
+  const url = document.createElement("div");
+  url.className = "site-url";
+  url.textContent = site.url;
+  const status = document.createElement("div");
+  const statusValue = state.statuses[site.id] || "unknown";
+  status.className = `status-badge status-${statusValue}`;
+  status.textContent = getStatusText(statusValue);
+  info.append(name, url, status);
+  link.append(icon, info);
+
+  const checkBtn = document.createElement("button");
+  checkBtn.className = "small-btn";
+  checkBtn.type = "button";
+  checkBtn.textContent = "檢查";
+  checkBtn.addEventListener("click", () => checkSite(site));
+
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "small-btn";
+  saveBtn.type = "button";
+  saveBtn.textContent = state.saved.has(site.id) ? "★" : "☆";
+  saveBtn.addEventListener("click", () => {
+    if (state.saved.has(site.id)) state.saved.delete(site.id);
+    else state.saved.add(site.id);
+    saveState();
+    renderSites();
+  });
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.className = "small-btn delete-btn";
+  deleteBtn.type = "button";
+  deleteBtn.textContent = "刪除";
+  deleteBtn.addEventListener("click", () => deleteSite(site.id));
+
+  const select = createCategorySelect(site.categoryId);
+  select.addEventListener("change", () => {
+    site.categoryId = select.value;
+    saveState();
+    render();
+  });
+
+  card.append(link, checkBtn, saveBtn, deleteBtn, select);
+  return card;
+}
+
+function createCategorySelect(value = "") {
+  const select = document.createElement("select");
+  select.className = "category-select";
+  select.append(new Option("未分類", ""));
+  flattenCategories().forEach((cat) => {
+    select.append(new Option(cat.label, cat.id));
+  });
+  select.value = resolveCategoryId(value);
+  return select;
+}
+
+function deleteSite(id) {
+  const site = state.sites.find((item) => item.id === id);
+  if (!site || !confirm(`確定刪除「${site.name}」？`)) return;
+  state.sites = state.sites.filter((item) => item.id !== id);
+  delete state.statuses[id];
+  state.saved.delete(id);
+  saveState();
+  render();
+}
+
+function moveSiteToCategory(id, categoryId) {
+  const site = state.sites.find((item) => item.id === id);
+  if (!site) return;
+  site.categoryId = categoryId;
+  saveState();
+  render();
+}
+
+async function checkSite(site) {
+  state.statuses[site.id] = "checking";
+  saveState();
+  renderSites();
+
+  try {
+    await fetch(site.url, {
+      method: "GET",
+      mode: "no-cors",
+      cache: "no-store"
+    });
+    state.statuses[site.id] = "ok";
+  } catch {
+    state.statuses[site.id] = "bad";
+  }
+
+  saveState();
+  renderSites();
+}
+
+async function checkVisibleSites() {
+  const visible = filteredSites().slice(0, state.visibleCount);
+  for (const site of visible) {
+    await checkSite(site);
+  }
+}
+
+function getStatusText(status) {
+  if (status === "ok") return "可開啟";
+  if (status === "bad") return "可能無法開啟";
+  if (status === "checking") return "檢查中";
+  return "未檢查";
+}
+
+function renderPending() {
+  els.pendingCount.textContent = `${state.pending.length} Pending`;
+  els.pendingList.innerHTML = "";
+
+  if (!state.pending.length) {
+    els.pendingList.innerHTML = '<div class="empty-state">目前沒有待分類資料。</div>';
+    return;
+  }
+
+  state.pending.forEach((site) => {
+    const card = document.createElement("article");
+    card.className = "pending-card";
+    const title = document.createElement("div");
+    title.className = "pending-title";
+    title.textContent = site.name;
+    const domain = document.createElement("div");
+    domain.className = "pending-domain";
+    domain.textContent = site.url;
+
+    const actions = document.createElement("div");
+    actions.className = "pending-actions";
+    const select = createCategorySelect();
+    const addBtn = document.createElement("button");
+    addBtn.className = "primary-btn";
+    addBtn.type = "button";
+    addBtn.textContent = "加入分類";
+    addBtn.addEventListener("click", () => classifyPending(site.id, select.value));
+    actions.append(select, addBtn);
+
+    const dragHandle = document.createElement("button");
+    dragHandle.className = "small-btn drag-handle";
+    dragHandle.type = "button";
+    dragHandle.textContent = "拖移到左側分類";
+    dragHandle.draggable = true;
+    dragHandle.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData("application/x-pending-site", site.id);
+      event.dataTransfer.effectAllowed = "move";
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "small-btn delete-btn";
+    deleteBtn.type = "button";
+    deleteBtn.textContent = "刪除";
+    deleteBtn.addEventListener("click", () => {
+      state.pending = state.pending.filter((item) => item.id !== site.id);
+      saveState();
+      renderPending();
+    });
+
+    card.append(title, domain, actions, dragHandle, deleteBtn);
+    els.pendingList.append(card);
+  });
+}
+
+function classifyPending(id, categoryId) {
+  if (!categoryId) {
+    alert("請先選擇分類");
+    return;
+  }
+  const site = state.pending.find((item) => item.id === id);
+  if (!site) return;
+  site.categoryId = categoryId;
+  state.pending = state.pending.filter((item) => item.id !== id);
+  state.sites = uniqueSites([...state.sites, site]);
+  saveState();
+  render();
+}
+
+function render() {
+  renderCategories();
+  renderSites();
+  renderPending();
+}
+
+function parseCsv(text, delimiter) {
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if (!lines.length) return [];
+  const split = (line) => line.split(delimiter).map((cell) => cell.replace(/^"|"$/g, "").trim());
+  const headers = split(lines[0]);
+  return lines.slice(1).map((line) => {
+    const cells = split(line);
+    return Object.fromEntries(headers.map((header, index) => [header, cells[index] || ""]));
+  });
+}
+
+function rowsToSites(rows) {
+  return normalizeImportedRows(rows).map((row) => normalizeSite({
+    name: getRowValue(row, ["網站名稱", "網站名称", "網站名", "名稱", "name", "Name"]),
+    domain: getRowValue(row, ["域名", "網址", "URL", "url", "domain", "Domain"])
+  })).filter(Boolean);
+}
+
+function normalizeImportedRows(rows) {
+  if (!rows.length) return rows;
+
+  const firstUsefulRow = rows.findIndex((row) => {
+    const values = Object.values(row).map((value) => normalizeHeader(value));
+    return values.some((value) => ["網站名稱", "網站名称", "網站名", "名稱", "name"].map(normalizeHeader).includes(value))
+      && values.some((value) => ["域名", "網址", "url", "domain"].map(normalizeHeader).includes(value));
+  });
+
+  if (firstUsefulRow < 0) return rows;
+
+  const headerValues = Object.values(rows[firstUsefulRow]).map((value) => String(value || "").trim());
+  return rows.slice(firstUsefulRow + 1).map((row) => {
+    const values = Object.values(row);
+    return Object.fromEntries(headerValues.map((header, index) => [header, values[index] || ""]));
+  });
+}
+
+function normalizeHeader(header) {
+  return String(header || "").replace(/^\uFEFF/, "").replace(/\s+/g, "").trim().toLowerCase();
+}
+
+function getRowValue(row, names) {
+  const normalized = Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [normalizeHeader(key), value])
+  );
+  for (const name of names) {
+    const value = normalized[normalizeHeader(name)];
+    if (value !== undefined && value !== null && String(value).trim()) return value;
+  }
+  return "";
+}
+
+async function importSpreadsheet(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  let rows = [];
+  if (ext === "csv" || ext === "tsv") {
+    const text = await file.text();
+    rows = parseCsv(text, ext === "tsv" ? "\t" : ",");
+  } else {
+    rows = window.XLSX ? await parseWithSheetJs(file) : await parseXlsxBasic(file);
+  }
+
+  const incoming = rowsToSites(rows);
+  const existingDomains = new Set([...state.sites, ...state.pending].map((site) => site.domain));
+  const fresh = incoming.filter((site) => !existingDomains.has(site.domain));
+  state.pending = uniqueSites([...state.pending, ...fresh]);
+  saveState();
+
+  const duplicateCount = incoming.length - fresh.length;
+  const invalidCount = rows.length - incoming.length;
+  els.importStatus.textContent = `讀到 ${rows.length} 列，成功匯入 ${fresh.length} 筆，略過 ${duplicateCount} 筆重複、${invalidCount} 筆欄位不完整。`;
+
+  if (!incoming.length) {
+    alert("有讀到檔案，但沒有抓到可匯入資料。請確認欄位名稱是「網站名稱」與「域名」。");
+  } else if (!fresh.length && duplicateCount > 0) {
+    alert("檔案資料已經存在，所以沒有新增重複資料。");
+  }
+
+  render();
+}
+
+async function parseWithSheetJs(file) {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(sheet, { defval: "" });
+}
+
+async function parseXlsxBasic(file) {
+  if (!("DecompressionStream" in window)) {
+    throw new Error("這個瀏覽器不支援離線解析 Excel，請改用 CSV 或更新瀏覽器。");
+  }
+
+  const files = await unzipXlsx(await file.arrayBuffer());
+  const workbookXml = await readZipText(files, "xl/workbook.xml");
+  const workbookRelsXml = await readZipText(files, "xl/_rels/workbook.xml.rels");
+  const workbookDoc = parseXml(workbookXml);
+  const relsDoc = parseXml(workbookRelsXml);
+  const firstSheet = firstElement(workbookDoc, "sheet");
+
+  if (!firstSheet) {
+    throw new Error("找不到 Excel 工作表。");
+  }
+
+  const relationshipId = firstSheet.getAttribute("r:id")
+    || firstSheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+  const relationship = elements(relsDoc, "Relationship")
+    .find((item) => item.getAttribute("Id") === relationshipId);
+  const target = relationship?.getAttribute("Target") || "worksheets/sheet1.xml";
+  const sheetPath = target.startsWith("xl/") ? target : `xl/${target.replace(/^\/+/, "")}`;
+  const sharedStrings = files.has("xl/sharedStrings.xml")
+    ? parseSharedStrings(await readZipText(files, "xl/sharedStrings.xml"))
+    : [];
+
+  return parseSheetRows(await readZipText(files, sheetPath), sharedStrings);
+}
+
+async function unzipXlsx(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  const eocdOffset = findEndOfCentralDirectory(view);
+  const totalEntries = view.getUint16(eocdOffset + 10, true);
+  const centralOffset = view.getUint32(eocdOffset + 16, true);
+  const decoder = new TextDecoder();
+  const files = new Map();
+  let offset = centralOffset;
+
+  for (let index = 0; index < totalEntries; index += 1) {
+    if (view.getUint32(offset, true) !== 0x02014b50) break;
+
+    const method = view.getUint16(offset + 10, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const fileNameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const localHeaderOffset = view.getUint32(offset + 42, true);
+    const nameBytes = bytes.slice(offset + 46, offset + 46 + fileNameLength);
+    const name = decoder.decode(nameBytes).replace(/\\/g, "/");
+
+    const localNameLength = view.getUint16(localHeaderOffset + 26, true);
+    const localExtraLength = view.getUint16(localHeaderOffset + 28, true);
+    const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
+    const compressed = bytes.slice(dataStart, dataStart + compressedSize);
+    files.set(name, decompressZipEntry(compressed, method));
+
+    offset += 46 + fileNameLength + extraLength + commentLength;
+  }
+
+  return files;
+}
+
+function findEndOfCentralDirectory(view) {
+  const start = Math.max(0, view.byteLength - 66000);
+  for (let offset = view.byteLength - 22; offset >= start; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) return offset;
+  }
+  throw new Error("這個 Excel 檔案格式無法讀取。");
+}
+
+async function decompressZipEntry(bytes, method) {
+  if (method === 0) return bytes;
+  if (method !== 8) throw new Error("Excel 壓縮格式不支援。");
+
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function readZipText(files, path) {
+  const entry = files.get(path);
+  if (!entry) throw new Error(`Excel 缺少必要檔案：${path}`);
+  return new TextDecoder().decode(await entry);
+}
+
+function parseXml(text) {
+  return new DOMParser().parseFromString(text, "application/xml");
+}
+
+function parseSharedStrings(xml) {
+  return elements(parseXml(xml), "si").map((item) => {
+    return elements(item, "t").map((node) => node.textContent || "").join("");
+  });
+}
+
+function parseSheetRows(xml, sharedStrings) {
+  const doc = parseXml(xml);
+  const matrix = elements(doc, "row").map((row) => {
+    const values = [];
+    elements(row, "c").forEach((cell) => {
+      const colIndex = columnIndexFromRef(cell.getAttribute("r"));
+      values[colIndex] = readCellValue(cell, sharedStrings);
+    });
+    return values;
+  });
+
+  if (!matrix.length) return [];
+
+  return matrix.map((row) => {
+    return Object.fromEntries(row.map((value, index) => [`__COL_${index}`, value ?? ""]));
+  });
+}
+
+function columnIndexFromRef(ref) {
+  const letters = String(ref || "A").replace(/\d+/g, "");
+  return letters.split("").reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0) - 1;
+}
+
+function readCellValue(cell, sharedStrings) {
+  const type = cell.getAttribute("t");
+  if (type === "inlineStr") return firstElement(cell, "t")?.textContent || "";
+  const value = firstElement(cell, "v")?.textContent || "";
+  if (type === "s") return sharedStrings[Number(value)] || "";
+  return value;
+}
+
+function elements(root, localName) {
+  return Array.from(root.getElementsByTagNameNS("*", localName));
+}
+
+function firstElement(root, localName) {
+  return elements(root, localName)[0] || null;
+}
+
+async function restoreBackup(file) {
+  const data = JSON.parse(await file.text());
+  const storage = data.storage || data;
+  Object.entries(STORAGE).forEach(([, key]) => {
+    if (Object.prototype.hasOwnProperty.call(storage, key)) {
+      const value = storage[key];
+      localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
+    }
+  });
+  loadState();
+  render();
+  alert(`備份已還原：${state.sites.length} 筆已分類，${state.pending.length} 筆待分類。`);
+}
+
+function exportBackup() {
+  const storage = {};
+  Object.values(STORAGE).forEach((key) => {
+    storage[key] = readJson(key, null);
+  });
+  const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), storage }, null, 2)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "reference-sites-backup.json";
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+els.toggleEditBtn.addEventListener("click", () => {
+  state.editing = !state.editing;
+  renderCategories();
+});
+els.addCategoryBtn.addEventListener("click", addCategory);
+els.addChildBtn.addEventListener("click", addChildCategory);
+els.searchInput.addEventListener("input", () => {
+  state.search = els.searchInput.value;
+  state.visibleCount = 12;
+  renderSites();
+});
+els.loadMoreBtn.addEventListener("click", () => {
+  state.visibleCount += 12;
+  renderSites();
+});
+els.checkVisibleBtn.addEventListener("click", checkVisibleSites);
+els.exportBackupBtn.addEventListener("click", exportBackup);
+els.importInput.addEventListener("change", (event) => {
+  const file = event.target.files[0];
+  if (file) {
+    importSpreadsheet(file).catch((error) => {
+      console.error(error);
+      els.importStatus.textContent = "匯入失敗，請確認 Excel 欄位有「網站名稱」與「域名」。";
+      alert(error.message || "匯入失敗，請確認 Excel 檔案格式。");
+    });
+  }
+  event.target.value = "";
+});
+if (els.backupInput) {
+  els.backupInput.addEventListener("change", (event) => {
+    const file = event.target.files[0];
+    if (file) restoreBackup(file);
+    event.target.value = "";
+  });
+}
+els.clearPendingBtn.addEventListener("click", () => {
+  if (!confirm("確定清空所有待分類資料？")) return;
+  state.pending = [];
+  saveState();
+  renderPending();
+});
+
+loadState();
+render();

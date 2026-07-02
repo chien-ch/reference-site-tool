@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>案例助手 Directory Pro</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-mark">▦</div>
+    <div>
+      <div class="brand-title">案例助手</div>
+      <div class="brand-subtitle">DIRECTORY PRO</div>
+    </div>
+    <button class="ghost-btn" id="exportBackupBtn" type="button">下載備份</button>
+  </header>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-heading">▦ BROWSE CATEGORIES</div>
+      <div class="sidebar-actions">
+        <button class="small-btn" id="toggleEditBtn" type="button">編輯分類</button>
+        <button class="small-btn" id="addCategoryBtn" type="button">新增分類</button>
+        <button class="small-btn" id="addChildBtn" type="button">新增子分類</button>
+      </div>
+      <p class="edit-hint" id="editHint">編輯模式可調整順序、改名、刪除，也能拖曳主分類到另一個主分類下變成子分類。</p>
+      <nav class="category-list" id="categoryList"></nav>
+    </aside>
+
+    <main class="content">
+      <section class="hero">
+        <p class="kicker">REFERENCE FINDER</p>
+        <h1>想找什麼產業的案例？</h1>
+        <p>輸入產業名稱或關鍵字，快速獲取精選參考網站。</p>
+        <label class="search-box">
+          <span>⌕</span>
+          <input id="searchInput" type="search" placeholder="輸入關鍵字，例如：寵物、醫療、餐飲、當舖...">
+        </label>
+      </section>
+
+      <section class="result-panel">
+        <div class="panel-head">
+          <div>
+            <p class="kicker">MATCHES FOUND</p>
+            <h2 id="resultTitle">所有案例</h2>
+          </div>
+          <div class="panel-actions">
+            <button class="small-btn" id="checkVisibleBtn" type="button">檢查目前列表</button>
+            <span class="count-pill" id="resultCount">0 Results</span>
+          </div>
+        </div>
+        <div class="site-list" id="siteList"></div>
+        <button class="load-more" id="loadMoreBtn" type="button">Load more</button>
+      </section>
+    </main>
+
+    <aside class="utility-panel">
+      <section class="utility-card">
+        <p class="kicker">MONTHLY IMPORT</p>
+        <h2>匯入每月新參考站</h2>
+        <p>支援 .xlsx、.csv、.tsv，只讀取「網站名稱」與「域名」。</p>
+        <label class="primary-btn">
+          上傳 Excel
+          <input id="importInput" type="file" accept=".xlsx,.xls,.csv,.tsv" hidden>
+        </label>
+        <button class="ghost-btn full" id="clearPendingBtn" type="button">清空待分類</button>
+        <p class="muted" id="importStatus">尚未匯入檔案。</p>
+      </section>
+
+      <section class="utility-card">
+        <div class="utility-head">
+          <div>
+            <p class="kicker">NEEDS SORTING</p>
+            <h2>待分類參考站</h2>
+          </div>
+          <span class="count-pill" id="pendingCount">0 Pending</span>
+        </div>
+        <div class="pending-list" id="pendingList"></div>
+      </section>
+    </aside>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
