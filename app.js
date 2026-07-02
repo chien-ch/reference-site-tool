@@ -6,6 +6,8 @@ const STORAGE = {
   saved: "reference-saved"
 };
 
+const GOOGLE_SHEET_API_URL = "https://script.google.com/macros/s/AKfycbw369DYHZGnNLsRcBb3ZOEdwG2Huo4gC4h6Q2J-dvflWjOUcDVlaJIprBohfa6UwSd0/exec";
+
 const DEFAULT_CATEGORIES = [
   { id: "medical", name: "醫療診所", children: ["中醫", "牙科", "身心科", "醫美/皮膚", "物理/語言/徒手治療/復健", "其他"] },
   { id: "medical-equipment", name: "醫療器材", children: [] },
@@ -45,7 +47,9 @@ const state = {
   search: "",
   visibleCount: 12,
   editing: false,
-  openCategories: new Set()
+  openCategories: new Set(),
+  cloudSyncEnabled: false,
+  cloudSyncTimer: null
 };
 
 const els = {
@@ -285,6 +289,7 @@ function saveState() {
   writeJson(STORAGE.pending, state.pending);
   writeJson(STORAGE.statuses, state.statuses);
   writeJson(STORAGE.saved, Array.from(state.saved));
+  scheduleCloudSync();
 }
 
 function setSelectedCategory(id) {
@@ -761,6 +766,141 @@ function getRowValue(row, names) {
   return "";
 }
 
+function statusValueFromText(text) {
+  const value = String(text || "").trim();
+  if (value === "可開啟") return "ok";
+  if (value === "可能無法開啟") return "bad";
+  if (value === "檢查中") return "checking";
+  return "unknown";
+}
+
+function siteFromSheetRow(row) {
+  const name = getRowValue(row, ["網站名稱", "name"]);
+  const domain = normalizeDomain(getRowValue(row, ["域名", "domain"]));
+  if (!name || !domain) return null;
+
+  return {
+    id: String(getRowValue(row, ["id"]) || makeId("site")),
+    name,
+    domain,
+    url: getRowValue(row, ["網址", "url"]) || ensureUrl(domain),
+    categoryId: String(getRowValue(row, ["分類ID", "categoryId"]) || ""),
+    addedAt: getRowValue(row, ["建立時間", "addedAt"]) || new Date().toISOString()
+  };
+}
+
+function categoriesFromSheetRows(rows) {
+  const parents = new Map();
+  const pendingChildren = [];
+
+  rows.forEach((row) => {
+    const id = String(getRowValue(row, ["分類ID", "id"]) || "").trim();
+    const name = String(getRowValue(row, ["分類名稱", "name"]) || "").trim();
+    const parentId = String(getRowValue(row, ["父分類ID", "parentId"]) || "").trim();
+    const depth = Number(getRowValue(row, ["層級", "depth"]) || 0);
+
+    if (!id || !name) return;
+
+    if (!parentId && depth !== 1) {
+      parents.set(id, { id, name, children: [] });
+    } else {
+      pendingChildren.push({ id, name, parentId });
+    }
+  });
+
+  pendingChildren.forEach((child) => {
+    const parent = parents.get(child.parentId);
+    if (parent) parent.children.push({ id: child.id, name: child.name, children: [] });
+    else parents.set(child.id, { id: child.id, name: child.name, children: [] });
+  });
+
+  return Array.from(parents.values());
+}
+
+function applyCloudData(data) {
+  const cloudSites = Array.isArray(data?.sites) ? data.sites : [];
+  const cloudPending = Array.isArray(data?.pending) ? data.pending : [];
+  const cloudCategories = Array.isArray(data?.categories) ? data.categories : [];
+
+  const nextSites = uniqueSites(cloudSites.map(siteFromSheetRow).filter(Boolean));
+  const nextPending = uniqueSites(cloudPending.map(siteFromSheetRow).filter(Boolean));
+  const nextCategories = categoriesFromSheetRows(cloudCategories);
+  const nextStatuses = {};
+  const nextSaved = new Set();
+
+  cloudSites.forEach((row) => {
+    const id = String(getRowValue(row, ["id"]) || "");
+    if (!id) return;
+    nextStatuses[id] = statusValueFromText(getRowValue(row, ["檢查狀態", "status"]));
+    if (String(getRowValue(row, ["已收藏", "saved"])).trim() === "是") {
+      nextSaved.add(id);
+    }
+  });
+
+  if (nextCategories.length) state.categories = normalizeCategories(nextCategories);
+  if (nextSites.length) state.sites = nextSites;
+  state.pending = nextPending;
+  state.statuses = nextStatuses;
+  state.saved = nextSaved;
+}
+
+function siteToCloudRow(site) {
+  return {
+    id: site.id || "",
+    name: site.name || "",
+    domain: site.domain || "",
+    url: site.url || ensureUrl(site.domain),
+    categoryId: site.categoryId || "",
+    categoryName: categoryLabel(site.categoryId),
+    status: getStatusText(state.statuses[site.id] || "unknown"),
+    saved: state.saved.has(site.id),
+    addedAt: site.addedAt || ""
+  };
+}
+
+async function loadCloudState() {
+  try {
+    const response = await fetch(`${GOOGLE_SHEET_API_URL}?t=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) throw new Error("Google Sheet API 讀取失敗");
+    const data = await response.json();
+    applyCloudData(data);
+    state.cloudSyncEnabled = false;
+    saveState();
+    state.cloudSyncEnabled = true;
+    render();
+  } catch (error) {
+    console.warn(error);
+  }
+}
+
+function scheduleCloudSync() {
+  if (!state.cloudSyncEnabled) return;
+  clearTimeout(state.cloudSyncTimer);
+  state.cloudSyncTimer = setTimeout(syncCloudState, 900);
+}
+
+async function syncCloudState() {
+  if (!state.cloudSyncEnabled) return;
+
+  const payloads = [
+    { action: "saveSites", sites: state.sites.map(siteToCloudRow) },
+    { action: "saveCategories", categories: state.categories }
+  ];
+
+  for (const payload of payloads) {
+    try {
+      await fetch(GOOGLE_SHEET_API_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+}
+
 async function importSpreadsheet(file) {
   const ext = file.name.split(".").pop().toLowerCase();
   let rows = [];
@@ -1008,3 +1148,4 @@ els.clearPendingBtn.addEventListener("click", () => {
 
 loadState();
 render();
+loadCloudState();
