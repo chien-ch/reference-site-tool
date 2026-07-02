@@ -95,6 +95,26 @@ function readJson(key, fallback) {
   }
 }
 
+function readSeedJson(key, fallback) {
+  const seed = window.REFERENCE_SEED_DATA?.storage || window.REFERENCE_SEED_DATA || {};
+  return Object.prototype.hasOwnProperty.call(seed, key) ? seed[key] : fallback;
+}
+
+function readStateJson(key, fallback) {
+  const stored = readJson(key, null);
+  const seed = readSeedJson(key, null);
+
+  if (Array.isArray(stored) && stored.length === 0 && Array.isArray(seed) && seed.length > 0) {
+    return seed;
+  }
+
+  if (stored && !(Array.isArray(stored) && stored.length === 0)) {
+    return stored;
+  }
+
+  return seed ?? fallback;
+}
+
 function writeJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
@@ -239,16 +259,20 @@ function uniqueSites(sites) {
 }
 
 function loadState() {
-  state.categories = normalizeCategories(readJson(STORAGE.categories, []));
-  state.sites = uniqueSites((readJson(STORAGE.sites, []) || []).map(normalizeSite).filter(Boolean));
-  state.pending = uniqueSites((readJson(STORAGE.pending, []) || []).map(normalizeSite).filter(Boolean));
-  state.statuses = readJson(STORAGE.statuses, {}) || {};
+  const storedSites = readJson(STORAGE.sites, null);
+  const seedSites = readSeedJson(STORAGE.sites, []);
+  const shouldUseSeedData = Array.isArray(seedSites) && seedSites.length > 0 && (!Array.isArray(storedSites) || storedSites.length === 0);
+
+  state.categories = normalizeCategories(shouldUseSeedData ? readSeedJson(STORAGE.categories, []) : readStateJson(STORAGE.categories, []));
+  state.sites = uniqueSites(((shouldUseSeedData ? seedSites : readStateJson(STORAGE.sites, [])) || []).map(normalizeSite).filter(Boolean));
+  state.pending = uniqueSites(((shouldUseSeedData ? readSeedJson(STORAGE.pending, []) : readStateJson(STORAGE.pending, [])) || []).map(normalizeSite).filter(Boolean));
+  state.statuses = (shouldUseSeedData ? readSeedJson(STORAGE.statuses, {}) : readStateJson(STORAGE.statuses, {})) || {};
   Object.keys(state.statuses).forEach((siteId) => {
     if (state.statuses[siteId] === "manual") {
       delete state.statuses[siteId];
     }
   });
-  state.saved = new Set(readJson(STORAGE.saved, []) || []);
+  state.saved = new Set((shouldUseSeedData ? readSeedJson(STORAGE.saved, []) : readStateJson(STORAGE.saved, [])) || []);
   state.categories.forEach((cat) => {
     if (cat.children.length) state.openCategories.add(cat.id);
   });
