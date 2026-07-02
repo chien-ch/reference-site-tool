@@ -47,9 +47,7 @@ const state = {
   search: "",
   visibleCount: 12,
   editing: false,
-  openCategories: new Set(),
-  cloudSyncEnabled: false,
-  cloudSyncTimer: null
+  openCategories: new Set()
 };
 
 const els = {
@@ -176,10 +174,15 @@ function normalizeCategories(raw) {
 function ensureUniqueCategoryIds(categories) {
   const used = new Set();
 
-  const uniqueId = (preferred, name, parentName = "") => {
+  const uniqueId = (preferred, name, parentName = "", isChild = false) => {
     let base = String(preferred || slug(`${parentName}-${name}`));
-    if (!base || used.has(base)) {
-      base = slug(`${parentName}-${name}`);
+    const parentScopedBase = slug(`${parentName}-${name}`);
+    const genericChildId = slug(name);
+
+    if (isChild && (!base || base === genericChildId || used.has(base))) {
+      base = parentScopedBase;
+    } else if (!base || used.has(base)) {
+      base = parentScopedBase;
     }
 
     let id = base;
@@ -202,7 +205,7 @@ function ensureUniqueCategoryIds(categories) {
 
     parent.children = cat.children.map((child) => ({
       ...child,
-      id: uniqueId(child.id, child.name, parent.name)
+      id: uniqueId(child.id, child.name, parent.name, true)
     }));
 
     return parent;
@@ -236,10 +239,39 @@ function findCategory(id, categories = state.categories) {
   return null;
 }
 
+function categoryExists(id) {
+  return Boolean(id && findCategory(id));
+}
+
+function mergeOfficialCategories(officialCategories) {
+  const merged = state.categories.length ? structuredClone(state.categories) : [];
+  const currentIds = new Set(flattenCategories(merged).map((cat) => cat.id));
+
+  officialCategories.forEach((official) => {
+    if (!currentIds.has(official.id)) {
+      merged.push(structuredClone(official));
+      flattenCategories([official]).forEach((cat) => currentIds.add(cat.id));
+      return;
+    }
+
+    const existing = findCategory(official.id, merged)?.category;
+    if (!existing) return;
+
+    official.children.forEach((child) => {
+      if (!currentIds.has(child.id)) {
+        existing.children.push(structuredClone(child));
+        currentIds.add(child.id);
+      }
+    });
+  });
+
+  return normalizeCategories(merged);
+}
+
 function categoryLabel(idOrName) {
   if (!idOrName) return "未分類";
   const found = flattenCategories().find((cat) => {
-    return cat.id === idOrName || cat.name === idOrName || cat.label === idOrName;
+    return cat.id === idOrName;
   });
   return found ? found.label : String(idOrName);
 }
@@ -247,7 +279,8 @@ function categoryLabel(idOrName) {
 function resolveCategoryId(value) {
   if (!value) return "";
   const flat = flattenCategories();
-  const found = flat.find((cat) => cat.id === value || cat.name === value || cat.label === value);
+  const found = flat.find((cat) => cat.id === value || cat.label === value)
+    || flat.find((cat) => cat.name === value);
   return found ? found.id : value;
 }
 
@@ -255,12 +288,17 @@ function normalizeSite(raw) {
   const name = String(raw?.name || raw?.title || raw?.siteName || raw?.["網站名稱"] || "").trim();
   const domain = normalizeDomain(raw?.domain || raw?.url || raw?.href || raw?.["域名"] || "");
   if (!name || !domain) return null;
+  const categoryId = resolveCategoryId(raw?.categoryId || raw?.category || raw?.categoryName || "");
   return {
     id: String(raw?.id || makeId("site")),
     name,
     domain,
     url: raw?.url?.startsWith?.("http") ? raw.url : ensureUrl(domain),
-    categoryId: resolveCategoryId(raw?.categoryId || raw?.category || raw?.categoryName || ""),
+    categoryId,
+    officialCategoryId: raw?.officialCategoryId || categoryId,
+    categoryOverridden: Boolean(raw?.categoryOverridden),
+    hiddenByUser: Boolean(raw?.hiddenByUser),
+    fromOfficial: Boolean(raw?.fromOfficial),
     addedAt: raw?.addedAt || new Date().toISOString()
   };
 }
@@ -301,7 +339,6 @@ function saveState() {
   writeJson(STORAGE.pending, state.pending);
   writeJson(STORAGE.statuses, state.statuses);
   writeJson(STORAGE.saved, Array.from(state.saved));
-  scheduleCloudSync();
 }
 
 function setSelectedCategory(id) {
@@ -335,10 +372,10 @@ function createCategoryButton(cat, isChild = false) {
   const tools = document.createElement("div");
   tools.className = "category-tools";
 
-  const editBtn = toolButton("編", () => renameCategory(cat.id));
-  const upBtn = toolButton("上", () => moveCategory(cat.id, -1));
-  const downBtn = toolButton("下", () => moveCategory(cat.id, 1));
-  const deleteBtn = toolButton("刪", () => deleteCategory(cat.id), "delete-btn");
+  const editBtn = toolButton("編輯", () => renameCategory(cat.id));
+  const upBtn = toolButton("上移", () => moveCategory(cat.id, -1));
+  const downBtn = toolButton("下移", () => moveCategory(cat.id, 1));
+  const deleteBtn = toolButton("刪除", () => deleteCategory(cat.id), "delete-btn");
   tools.append(editBtn, upBtn, downBtn, deleteBtn);
 
   row.append(nameBtn, tools);
@@ -499,12 +536,28 @@ function dropCategory(draggedId, targetId) {
 
 function filteredSites() {
   const query = state.search.trim().toLowerCase();
+  const selectedIds = selectedCategoryIds();
   return state.sites.filter((site) => {
+    if (site.hiddenByUser) return false;
     const categoryText = categoryLabel(site.categoryId).toLowerCase();
     const text = `${site.name} ${site.domain} ${categoryText}`.toLowerCase();
-    const categoryMatch = state.selectedCategory === "all" || site.categoryId === state.selectedCategory;
+    const categoryMatch = state.selectedCategory === "all" || selectedIds.has(site.categoryId);
     return categoryMatch && (!query || text.includes(query));
   });
+}
+
+function selectedCategoryIds() {
+  if (state.selectedCategory === "all") return new Set(["all"]);
+
+  const found = findCategory(state.selectedCategory);
+  if (!found) return new Set([state.selectedCategory]);
+
+  const ids = new Set([state.selectedCategory]);
+  if (!found.parent) {
+    found.category.children.forEach((child) => ids.add(child.id));
+  }
+
+  return ids;
 }
 
 function renderSites() {
@@ -582,6 +635,7 @@ function createSiteCard(site) {
   const select = createCategorySelect(site.categoryId);
   select.addEventListener("change", () => {
     site.categoryId = select.value;
+    site.categoryOverridden = true;
     saveState();
     render();
   });
@@ -603,8 +657,8 @@ function createCategorySelect(value = "") {
 
 function deleteSite(id) {
   const site = state.sites.find((item) => item.id === id);
-  if (!site || !confirm(`確定刪除「${site.name}」？`)) return;
-  state.sites = state.sites.filter((item) => item.id !== id);
+  if (!site || !confirm(`確定從你的清單隱藏「${site.name}」？這不會刪除官方資料。`)) return;
+  site.hiddenByUser = true;
   delete state.statuses[id];
   state.saved.delete(id);
   saveState();
@@ -615,6 +669,7 @@ function moveSiteToCategory(id, categoryId) {
   const site = state.sites.find((item) => item.id === id);
   if (!site) return;
   site.categoryId = categoryId;
+  site.categoryOverridden = true;
   saveState();
   render();
 }
@@ -654,15 +709,16 @@ function getStatusText(status) {
 }
 
 function renderPending() {
-  els.pendingCount.textContent = `${state.pending.length} Pending`;
+  const pendingSites = state.pending.filter((site) => !site.hiddenByUser);
+  els.pendingCount.textContent = `${pendingSites.length} Pending`;
   els.pendingList.innerHTML = "";
 
-  if (!state.pending.length) {
+  if (!pendingSites.length) {
     els.pendingList.innerHTML = '<div class="empty-state">目前沒有待分類資料。</div>';
     return;
   }
 
-  state.pending.forEach((site) => {
+  pendingSites.forEach((site) => {
     const card = document.createElement("article");
     card.className = "pending-card";
     const title = document.createElement("div");
@@ -697,6 +753,8 @@ function renderPending() {
     deleteBtn.type = "button";
     deleteBtn.textContent = "刪除";
     deleteBtn.addEventListener("click", () => {
+      site.hiddenByUser = true;
+      state.sites = uniqueSites([...state.sites, site]);
       state.pending = state.pending.filter((item) => item.id !== site.id);
       saveState();
       renderPending();
@@ -715,6 +773,8 @@ function classifyPending(id, categoryId) {
   const site = state.pending.find((item) => item.id === id);
   if (!site) return;
   site.categoryId = categoryId;
+  site.categoryOverridden = true;
+  site.hiddenByUser = false;
   state.pending = state.pending.filter((item) => item.id !== id);
   state.sites = uniqueSites([...state.sites, site]);
   saveState();
@@ -866,8 +926,8 @@ function applyCloudData(data) {
   const cloudPending = Array.isArray(data?.pending) ? data.pending : [];
   const cloudCategories = Array.isArray(data?.categories) ? data.categories : [];
 
-  const nextSites = uniqueSites(cloudSites.map(siteFromSheetRow).filter(Boolean));
-  const nextPending = uniqueSites(cloudPending.map(siteFromSheetRow).filter(Boolean));
+  const officialSites = uniqueSites(cloudSites.map(siteFromSheetRow).filter(Boolean));
+  const officialPending = uniqueSites(cloudPending.map(siteFromSheetRow).filter(Boolean));
   const nextCategories = categoriesFromSheetRows(cloudCategories);
   const nextStatuses = {};
   const nextSaved = new Set();
@@ -881,11 +941,79 @@ function applyCloudData(data) {
     }
   });
 
-  if (nextCategories.length) state.categories = normalizeCategories(nextCategories);
-  if (nextSites.length) state.sites = nextSites;
-  state.pending = nextPending;
-  state.statuses = nextStatuses;
-  state.saved = nextSaved;
+  if (nextCategories.length) {
+    state.categories = mergeOfficialCategories(normalizeCategories(nextCategories));
+  }
+
+  mergeOfficialSites(officialSites, officialPending);
+
+  Object.entries(nextStatuses).forEach(([id, status]) => {
+    if (!state.statuses[id] || state.statuses[id] === "unknown") {
+      state.statuses[id] = status;
+    }
+  });
+
+  nextSaved.forEach((id) => state.saved.add(id));
+}
+
+function mergeOfficialSites(officialSites, officialPending) {
+  const officialDomains = new Set(officialSites.map((site) => site.domain));
+  const localSites = new Map(state.sites.map((site) => [site.domain, site]));
+  const localPending = new Map(state.pending.map((site) => [site.domain, site]));
+  const nextSites = [];
+  const nextPending = [];
+
+  officialSites.forEach((official) => {
+    const existing = localSites.get(official.domain) || localPending.get(official.domain);
+    const officialCategoryId = official.categoryId || "";
+    const hasOfficialCategory = categoryExists(officialCategoryId);
+
+    const merged = {
+      ...(existing || {}),
+      ...official,
+      officialCategoryId,
+      fromOfficial: true,
+      categoryOverridden: Boolean(existing?.categoryOverridden),
+      hiddenByUser: Boolean(existing?.hiddenByUser)
+    };
+
+    if (merged.categoryOverridden && categoryExists(existing?.categoryId)) {
+      merged.categoryId = existing.categoryId;
+      nextSites.push(merged);
+      return;
+    }
+
+    merged.categoryId = hasOfficialCategory ? officialCategoryId : "";
+
+    if (hasOfficialCategory) {
+      nextSites.push(merged);
+    } else {
+      nextPending.push(merged);
+    }
+  });
+
+  officialPending.forEach((official) => {
+    if (officialDomains.has(official.domain)) return;
+    const existing = localSites.get(official.domain) || localPending.get(official.domain);
+    nextPending.push({
+      ...(existing || {}),
+      ...official,
+      officialCategoryId: official.categoryId || "",
+      categoryId: existing?.categoryOverridden ? existing.categoryId : "",
+      fromOfficial: true,
+      categoryOverridden: Boolean(existing?.categoryOverridden),
+      hiddenByUser: Boolean(existing?.hiddenByUser)
+    });
+  });
+
+  state.sites.forEach((site) => {
+    if (!site.fromOfficial && !officialDomains.has(site.domain)) {
+      nextSites.push(site);
+    }
+  });
+
+  state.sites = uniqueSites(nextSites);
+  state.pending = uniqueSites(nextPending);
 }
 
 function siteToCloudRow(site) {
@@ -908,41 +1036,10 @@ async function loadCloudState() {
     if (!response.ok) throw new Error("Google Sheet API 讀取失敗");
     const data = await response.json();
     applyCloudData(data);
-    state.cloudSyncEnabled = false;
     saveState();
-    state.cloudSyncEnabled = true;
     render();
   } catch (error) {
     console.warn(error);
-  }
-}
-
-function scheduleCloudSync() {
-  if (!state.cloudSyncEnabled) return;
-  clearTimeout(state.cloudSyncTimer);
-  state.cloudSyncTimer = setTimeout(syncCloudState, 900);
-}
-
-async function syncCloudState() {
-  if (!state.cloudSyncEnabled) return;
-
-  const payloads = [
-    { action: "saveSites", sites: state.sites.map(siteToCloudRow) },
-    { action: "savePending", pending: state.pending.map(siteToCloudRow) },
-    { action: "saveCategories", categories: state.categories }
-  ];
-
-  for (const payload of payloads) {
-    try {
-      await fetch(GOOGLE_SHEET_API_URL, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(payload)
-      });
-    } catch (error) {
-      console.warn(error);
-    }
   }
 }
 

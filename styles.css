@@ -218,7 +218,8 @@ button,
 .tool-btn {
   font-size: 12px;
   min-height: 26px;
-  padding: 4px 7px;
+  min-width: 42px;
+  padding: 4px 8px;
 }
 
 .delete-btn {
