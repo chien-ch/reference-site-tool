@@ -731,11 +731,7 @@ function parseCsv(text, delimiter) {
   const lines = text.split(/\r?\n/).filter(Boolean);
   if (!lines.length) return [];
   const split = (line) => line.split(delimiter).map((cell) => cell.replace(/^"|"$/g, "").trim());
-  const headers = split(lines[0]);
-  return lines.slice(1).map((line) => {
-    const cells = split(line);
-    return Object.fromEntries(headers.map((header, index) => [header, cells[index] || ""]));
-  });
+  return lines.map(split);
 }
 
 function rowsToSites(rows) {
@@ -747,20 +743,56 @@ function rowsToSites(rows) {
 
 function normalizeImportedRows(rows) {
   if (!rows.length) return rows;
+  const matrix = rows.map(rowToValues).filter((row) => row.some((value) => String(value || "").trim()));
 
-  const firstUsefulRow = rows.findIndex((row) => {
-    const values = Object.values(row).map((value) => normalizeHeader(value));
+  const firstUsefulRow = matrix.findIndex((row) => {
+    const values = row.map((value) => normalizeHeader(value));
     return values.some((value) => ["網站名稱", "網站名称", "網站名", "名稱", "name"].map(normalizeHeader).includes(value))
       && values.some((value) => ["域名", "網址", "url", "domain"].map(normalizeHeader).includes(value));
   });
 
-  if (firstUsefulRow < 0) return rows;
+  if (firstUsefulRow < 0) return inferImportedRows(matrix);
 
-  const headerValues = Object.values(rows[firstUsefulRow]).map((value) => String(value || "").trim());
-  return rows.slice(firstUsefulRow + 1).map((row) => {
-    const values = Object.values(row);
+  const headerValues = matrix[firstUsefulRow].map((value) => String(value || "").trim());
+  return matrix.slice(firstUsefulRow + 1).map((values) => {
     return Object.fromEntries(headerValues.map((header, index) => [header, values[index] || ""]));
   });
+}
+
+function rowToValues(row) {
+  if (Array.isArray(row)) return row;
+  return Object.keys(row)
+    .sort((a, b) => columnSortValue(a) - columnSortValue(b))
+    .map((key) => row[key]);
+}
+
+function columnSortValue(key) {
+  const text = String(key);
+  const match = text.match(/^__COL_(\d+)$/);
+  if (match) return Number(match[1]);
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function looksLikeDomain(value) {
+  const text = normalizeDomain(value);
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(text);
+}
+
+function inferImportedRows(matrix) {
+  return matrix
+    .map((values) => {
+      const domainIndex = values.findIndex(looksLikeDomain);
+      if (domainIndex < 0) return null;
+      const nameIndex = Math.max(0, domainIndex - 1);
+      const name = values[nameIndex] || values[0] || "";
+      const domain = values[domainIndex] || "";
+      return {
+        "網站名稱": name,
+        "域名": domain
+      };
+    })
+    .filter(Boolean)
+    .filter((row) => normalizeHeader(row["網站名稱"]) !== normalizeHeader("網站名稱"));
 }
 
 function normalizeHeader(header) {
@@ -935,7 +967,7 @@ async function importSpreadsheet(file) {
   els.importStatus.textContent = `讀到 ${rows.length} 列，成功匯入 ${fresh.length} 筆，略過 ${duplicateCount} 筆重複、${invalidCount} 筆欄位不完整。`;
 
   if (!incoming.length) {
-    alert("有讀到檔案，但沒有抓到可匯入資料。請確認欄位名稱是「網站名稱」與「域名」。");
+    alert(`有讀到 ${rows.length} 列，但沒有抓到可匯入資料。請確認檔案內有網站名稱與域名，或把「域名」欄放在「網站名稱」右邊。`);
   } else if (!fresh.length && duplicateCount > 0) {
     alert("檔案資料已經存在，所以沒有新增重複資料。");
   }
@@ -947,7 +979,7 @@ async function parseWithSheetJs(file) {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 }
 
 async function parseXlsxBasic(file) {
