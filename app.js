@@ -104,6 +104,18 @@ function readSeedJson(key, fallback) {
   return Object.prototype.hasOwnProperty.call(seed, key) ? seed[key] : fallback;
 }
 
+function loadSeedScriptIfNeeded() {
+  if (window.REFERENCE_SEED_DATA) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = `reference-data.js?v=${Date.now()}`;
+    script.onload = () => resolve();
+    script.onerror = () => resolve();
+    document.head.appendChild(script);
+  });
+}
+
 function readStateJson(key, fallback) {
   const stored = readJson(key, null);
   const seed = readSeedJson(key, null);
@@ -884,6 +896,7 @@ async function syncCloudState() {
 
   const payloads = [
     { action: "saveSites", sites: state.sites.map(siteToCloudRow) },
+    { action: "savePending", pending: state.pending.map(siteToCloudRow) },
     { action: "saveCategories", categories: state.categories }
   ];
 
@@ -1146,6 +1159,11 @@ els.clearPendingBtn.addEventListener("click", () => {
   renderPending();
 });
 
-loadState();
-render();
-loadCloudState();
+async function initApp() {
+  await loadSeedScriptIfNeeded();
+  loadState();
+  render();
+  loadCloudState();
+}
+
+initApp();
