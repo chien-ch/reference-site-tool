@@ -1220,7 +1220,10 @@ function applyCloudData(data) {
   });
 
   if (nextCategories.length) {
-    state.categories = mergeOfficialCategories(normalizeCategories(nextCategories));
+    const officialCategories = normalizeCategories(nextCategories);
+    state.categories = isLoggedIn()
+      ? mergeOfficialCategories(officialCategories)
+      : officialCategories;
   }
 
   mergeOfficialSites(officialSites, officialPending);
