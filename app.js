@@ -1255,29 +1255,35 @@ function renderZones() {
     const card = document.createElement("article");
     card.className = "pending-card";
     const title = document.createElement("div");
-    title.className = "pending-title";
+    title.className = "pending-title zone-title";
     title.textContent = `${zone.name}（${(zone.items || []).length}）`;
-    const removeZone = document.createElement("button");
-    removeZone.className = "small-btn delete-btn";
-    removeZone.type = "button";
-    removeZone.textContent = "刪除專區";
-    removeZone.addEventListener("click", () => {
-      state.zones = state.zones.filter((item) => item.id !== zone.id);
-      saveState();
-      render();
-    });
-    card.append(title, removeZone);
+    card.append(title);
+    if (isLoggedIn()) {
+      const removeZone = document.createElement("button");
+      removeZone.className = "small-btn delete-btn";
+      removeZone.type = "button";
+      removeZone.textContent = "刪除專區";
+      removeZone.addEventListener("click", () => {
+        state.zones = state.zones.filter((item) => item.id !== zone.id);
+        saveState();
+        render();
+      });
+      card.append(removeZone);
+    }
     (zone.items || []).forEach((item) => {
       const site = siteById(item.siteId);
       if (!site) return;
-      card.append(createMiniSiteCard(site, {
-        actionText: "移除",
-        onAction: () => {
-          zone.items = zone.items.filter((entry) => entry.id !== item.id);
-          saveState();
-          render();
-        }
-      }));
+      const options = isLoggedIn()
+        ? {
+            actionText: "移除",
+            onAction: () => {
+              zone.items = zone.items.filter((entry) => entry.id !== item.id);
+              saveState();
+              render();
+            }
+          }
+        : {};
+      card.append(createMiniSiteCard(site, options));
     });
     els.zoneList.append(card);
   });

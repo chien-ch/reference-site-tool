@@ -640,6 +640,17 @@ body:not(.is-admin) .admin-only {
   font-size: 15px;
 }
 
+.zone-title {
+  background: #eef4ff;
+  border: 1px solid #d8e5fa;
+  border-radius: 10px;
+  color: #001b4d;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0;
+  padding: 10px 12px;
+}
+
 .pending-domain {
   color: #6e84aa;
   font-family: Consolas, monospace;
