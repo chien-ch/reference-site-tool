@@ -397,15 +397,21 @@ function isLoggedIn() {
   return Boolean(state.currentUser?.username);
 }
 
+function currentRoleName() {
+  return String(state.currentUser?.role || "").trim();
+}
+
 function isAdmin() {
-  return ["admin", "superadmin"].includes(String(state.currentUser?.role || "").toLowerCase());
+  const role = currentRoleName().toLowerCase();
+  return ["admin", "superadmin", "總管理員", "管理員"].includes(role);
 }
 
 function updateAccountUi() {
   const name = state.currentUser?.username || "";
+  const roleName = currentRoleName() || "使用者";
   els.body.classList.toggle("is-logged-in", Boolean(name));
   els.body.classList.toggle("is-admin", isAdmin());
-  els.accountLabel.textContent = name ? `已登入：${name}${isAdmin() ? "（管理員）" : ""}` : "未登入";
+  els.accountLabel.textContent = name ? `已登入：${name}（${roleName}）` : "未登入";
   els.loginBtn.hidden = Boolean(name);
   els.logoutBtn.hidden = !name;
   els.saveUserBtn.hidden = !name;
