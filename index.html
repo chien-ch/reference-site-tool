@@ -4,44 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>&#26696;&#20363;&#21161;&#25163; Directory Pro</title>
-  <link rel="stylesheet" href="styles.css?v=20260703-13">
+  <link rel="stylesheet" href="styles.css?v=20260703-14">
   <style>
-    body:not(.is-logged-in) .app-shell {
-      display: grid !important;
-      grid-template-columns: 340px minmax(520px, 1fr) 360px !important;
-    }
-
-    body:not(.is-logged-in) .utility-panel {
-      display: block !important;
-      grid-column: 3 !important;
-      position: sticky !important;
-      top: 60px !important;
-    }
-
-    body:not(.is-logged-in) .utility-card:not(.login-only):not(.admin-only) {
-      display: block !important;
-    }
-
-    body:not(.is-logged-in) .manage-only {
-      display: none !important;
-    }
-
-    @media (max-width: 1280px) {
-      body:not(.is-logged-in) .app-shell {
-        grid-template-columns: 300px minmax(460px, 1fr) !important;
-      }
-
-      body:not(.is-logged-in) .utility-panel {
-        grid-column: 2 !important;
-        position: static !important;
-      }
-    }
-
-    @media (max-width: 860px) {
-      body:not(.is-logged-in) .app-shell {
-        display: block !important;
-      }
-    }
+    body:not(.is-logged-in) .utility-card:not(.login-only):not(.admin-only) { display: block !important; }
+    body:not(.is-logged-in) .manage-only { display: none !important; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -179,9 +145,10 @@
           <input id="paidImportInput" type="file" accept=".xlsx,.xls,.csv,.tsv" hidden>
         </label>
         <div class="zone-create manage-only">
-          <input id="paidNameInput" type="text" placeholder="&#32178;&#31449;&#21517;&#31281;">
-          <input id="paidDomainInput" type="text" placeholder="&#22495;&#21517;">
-          <input id="paidNoteInput" type="text" placeholder="&#31777;&#30701;&#35498;&#26126;">
+          <input id="paidFeatureInput" type="text" placeholder="&#20184;&#36027;&#21151;&#33021;&#21517;&#31281;">
+          <input id="paidNameInput" type="text" placeholder="&#21443;&#32771;&#31449;&#21517;&#31281;">
+          <input id="paidDomainInput" type="text" placeholder="&#22495;&#21517;&#65288;&#21487;&#30041;&#31354;&#65289;">
+          <input id="paidNoteInput" type="text" placeholder="&#21151;&#33021;&#35498;&#26126;">
           <button class="primary-btn" id="addPaidBtn" type="button">&#26032;&#22686;</button>
         </div>
         <div class="pending-list" id="paidList"></div>
@@ -200,7 +167,7 @@
     </aside>
   </div>
 
-  <script src="reference-data.js?v=20260703-13"></script>
-  <script src="app.js?v=20260703-13"></script>
+  <script src="reference-data.js?v=20260703-14"></script>
+  <script src="app.js?v=20260703-14"></script>
 </body>
 </html>

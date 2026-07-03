@@ -90,6 +90,7 @@ const els = {
   batchAddZoneBtn: document.getElementById("batchAddZoneBtn"),
   zoneList: document.getElementById("zoneList"),
   paidImportInput: document.getElementById("paidImportInput"),
+  paidFeatureInput: document.getElementById("paidFeatureInput"),
   paidNameInput: document.getElementById("paidNameInput"),
   paidDomainInput: document.getElementById("paidDomainInput"),
   paidNoteInput: document.getElementById("paidNoteInput"),
@@ -1900,6 +1901,343 @@ function exportBackup() {
   link.download = "reference-sites-backup.json";
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+function uniqueSites(sites) {
+  const map = new Map();
+  sites.forEach((site, index) => {
+    if (!site) return;
+    const key = site.domain || site.url || site.id || `${site.name || "site"}-${index}`;
+    map.set(key, site);
+  });
+  return Array.from(map.values());
+}
+
+function normalizePaidSite(raw) {
+  const name = String(raw?.name || raw?.title || raw?.siteName || raw?.["\u7db2\u7ad9\u540d\u7a31"] || "").trim();
+  const domain = normalizeDomain(raw?.domain || raw?.["\u57df\u540d"] || "");
+  const url = raw?.url?.startsWith?.("http") ? raw.url : ensureUrl(domain);
+  const featureName = String(raw?.featureName || raw?.feature || raw?.["\u529f\u80fd\u540d\u7a31"] || raw?.note || raw?.["\u7c21\u77ed\u8aaa\u660e"] || "\u672a\u5206\u985e\u4ed8\u8cbb\u529f\u80fd").trim();
+  const note = String(raw?.description || raw?.note || raw?.["\u529f\u80fd\u8aaa\u660e"] || raw?.["\u8aaa\u660e"] || raw?.["\u7c21\u77ed\u8aaa\u660e"] || "").trim();
+  if (!name && !featureName) return null;
+  return {
+    id: String(raw?.id || makeId("paid")),
+    name: name || featureName,
+    domain,
+    url,
+    featureName,
+    note,
+    addedAt: raw?.addedAt || new Date().toISOString()
+  };
+}
+
+function createMiniSiteCard(site, options = {}) {
+  const card = document.createElement("article");
+  card.className = "pending-card";
+  const title = document.createElement("div");
+  title.className = "pending-title";
+  title.textContent = site.name;
+  card.append(title);
+
+  if (site.url) {
+    const domain = document.createElement("a");
+    domain.className = "pending-domain";
+    domain.href = site.url;
+    domain.target = "_blank";
+    domain.rel = "noopener noreferrer";
+    domain.textContent = site.url;
+    card.append(domain);
+  }
+
+  if (site.note) {
+    const note = document.createElement("p");
+    note.className = "mini-note";
+    note.textContent = site.note;
+    card.append(note);
+  }
+
+  if (options.actionText && options.onAction) {
+    const button = document.createElement("button");
+    button.className = "small-btn";
+    button.type = "button";
+    button.textContent = options.actionText;
+    button.addEventListener("click", options.onAction);
+    card.append(button);
+  }
+  return card;
+}
+
+function addSiteToZone(siteId, zoneId) {
+  if (!requireLogin()) return;
+  if (!zoneId) {
+    alert("\u8acb\u5148\u9078\u64c7\u5c08\u5340");
+    return;
+  }
+  const zone = state.zones.find((item) => item.id === zoneId);
+  if (!zone) return;
+  zone.items = zone.items || [];
+  zone.items.push({ id: makeId("zone-item"), siteId });
+  saveState();
+  render();
+}
+
+function renderZones() {
+  if (!els.zoneList) return;
+  if (els.batchZoneSelect) {
+    els.batchZoneSelect.innerHTML = "";
+    els.batchZoneSelect.append(new Option("\u9078\u64c7\u5c08\u5340", ""));
+    state.zones.forEach((zone) => els.batchZoneSelect.append(new Option(zone.name, zone.id)));
+  }
+  els.zoneList.innerHTML = "";
+  if (!state.zones.length) {
+    els.zoneList.innerHTML = '<div class="empty-state">\u76ee\u524d\u6c92\u6709\u5c08\u5340\u3002</div>';
+    return;
+  }
+  state.zones.forEach((zone) => {
+    const card = document.createElement("article");
+    card.className = "pending-card";
+    const title = document.createElement("div");
+    title.className = "pending-title zone-title";
+    title.textContent = `${zone.name}\uff08${(zone.items || []).length}\uff09`;
+    card.append(title);
+
+    if (isLoggedIn()) {
+      const removeZone = document.createElement("button");
+      removeZone.className = "small-btn delete-btn";
+      removeZone.type = "button";
+      removeZone.textContent = "\u522a\u9664\u5c08\u5340";
+      removeZone.addEventListener("click", () => {
+        state.zones = state.zones.filter((item) => item.id !== zone.id);
+        saveState();
+        render();
+      });
+      card.append(removeZone);
+    }
+
+    (zone.items || []).forEach((item) => {
+      const site = siteById(item.siteId);
+      if (!site) return;
+      const options = isLoggedIn()
+        ? {
+            actionText: "\u79fb\u9664",
+            onAction: () => {
+              zone.items = zone.items.filter((entry) => entry.id !== item.id);
+              saveState();
+              render();
+            }
+          }
+        : {};
+      card.append(createMiniSiteCard(site, options));
+    });
+    els.zoneList.append(card);
+  });
+}
+
+function addSelectedSitesToZone() {
+  if (!requireLogin()) return;
+  const zoneId = els.batchZoneSelect?.value || "";
+  const zone = state.zones.find((item) => item.id === zoneId);
+  if (!zone) {
+    alert("\u8acb\u5148\u9078\u64c7\u5c08\u5340");
+    return;
+  }
+  const selected = Array.from(state.selectedForZone);
+  if (!selected.length) {
+    alert("\u8acb\u5148\u52fe\u9078\u53c3\u8003\u7ad9");
+    return;
+  }
+  zone.items = zone.items || [];
+  selected.forEach((siteId) => {
+    zone.items.push({ id: makeId("zone-item"), siteId });
+  });
+  state.selectedForZone.clear();
+  saveState();
+  render();
+}
+
+function addPaidSite() {
+  if (!requireLogin()) return;
+  const featureName = (els.paidFeatureInput?.value || "").trim();
+  const name = (els.paidNameInput?.value || "").trim();
+  const domain = normalizeDomain(els.paidDomainInput?.value || "");
+  const note = (els.paidNoteInput?.value || "").trim();
+  if (!featureName || !name) {
+    alert("\u8acb\u8f38\u5165\u4ed8\u8cbb\u529f\u80fd\u540d\u7a31\u8207\u53c3\u8003\u7ad9\u540d\u7a31");
+    return;
+  }
+  state.paidSites = uniqueSites([...state.paidSites, {
+    id: makeId("paid"),
+    name,
+    domain,
+    url: domain ? ensureUrl(domain) : "",
+    featureName,
+    note,
+    addedAt: new Date().toISOString()
+  }]);
+  if (els.paidFeatureInput) els.paidFeatureInput.value = "";
+  els.paidNameInput.value = "";
+  els.paidDomainInput.value = "";
+  els.paidNoteInput.value = "";
+  saveState();
+  render();
+}
+
+function renderPaidSites() {
+  if (!els.paidList) return;
+  els.paidList.innerHTML = "";
+  if (!state.paidSites.length) {
+    els.paidList.innerHTML = '<div class="empty-state">\u76ee\u524d\u6c92\u6709\u4ed8\u8cbb\u529f\u80fd\u7db2\u7ad9\u3002</div>';
+    return;
+  }
+
+  const groups = new Map();
+  state.paidSites.forEach((site) => {
+    const key = String(site.featureName || site.note || "\u672a\u5206\u985e\u4ed8\u8cbb\u529f\u80fd").trim();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(site);
+  });
+
+  groups.forEach((sites, featureName) => {
+    const groupCard = document.createElement("article");
+    groupCard.className = "pending-card paid-feature-card";
+    const title = document.createElement("div");
+    title.className = "pending-title zone-title";
+    title.textContent = `${featureName}\uff08${sites.length}\uff09`;
+    const tagline = document.createElement("p");
+    tagline.className = "paid-tagline";
+    tagline.textContent = "\u5be6\u969b\u5831\u50f9\u8acb\u8a62\u554fPM";
+    groupCard.append(title, tagline);
+
+    sites.forEach((site) => {
+      const item = document.createElement("article");
+      item.className = "pending-card paid-site-card";
+      const siteTitle = document.createElement("div");
+      siteTitle.className = "pending-title";
+      siteTitle.textContent = site.name;
+      item.append(siteTitle);
+
+      if (site.url) {
+        const link = document.createElement("a");
+        link.className = "pending-domain";
+        link.href = site.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = site.url;
+        item.append(link);
+      }
+
+      if (site.note) {
+        const detailBtn = document.createElement("button");
+        detailBtn.className = "small-btn";
+        detailBtn.type = "button";
+        detailBtn.textContent = site.url ? "\u67e5\u770b\u8aaa\u660e" : "\u67e5\u770b\u529f\u80fd\u8aaa\u660e";
+        detailBtn.addEventListener("click", () => openInfoModal(featureName, site));
+        item.append(detailBtn);
+      }
+
+      if (isLoggedIn()) {
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "small-btn delete-btn";
+        deleteBtn.type = "button";
+        deleteBtn.textContent = "\u522a\u9664";
+        deleteBtn.addEventListener("click", () => {
+          state.paidSites = state.paidSites.filter((entry) => entry.id !== site.id);
+          saveState();
+          render();
+        });
+        item.append(deleteBtn);
+      }
+
+      groupCard.append(item);
+    });
+    els.paidList.append(groupCard);
+  });
+}
+
+function openInfoModal(title, site) {
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop info-modal-backdrop";
+  const modal = document.createElement("div");
+  modal.className = "login-modal info-modal";
+  const heading = document.createElement("h2");
+  heading.textContent = title;
+  const name = document.createElement("p");
+  name.className = "info-modal-site";
+  name.textContent = site.name;
+  const note = document.createElement("p");
+  note.className = "info-modal-text";
+  note.textContent = site.note || "\u76ee\u524d\u6c92\u6709\u529f\u80fd\u8aaa\u660e\u3002";
+  const quote = document.createElement("p");
+  quote.className = "paid-tagline";
+  quote.textContent = "\u5be6\u969b\u5831\u50f9\u8acb\u8a62\u554fPM";
+  const actions = document.createElement("div");
+  actions.className = "login-actions";
+  if (site.url) {
+    const link = document.createElement("a");
+    link.className = "primary-btn";
+    link.href = site.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "\u958b\u555f\u53c3\u8003\u7ad9";
+    actions.append(link);
+  }
+  const close = document.createElement("button");
+  close.className = "ghost-btn";
+  close.type = "button";
+  close.textContent = "\u95dc\u9589";
+  close.addEventListener("click", () => backdrop.remove());
+  actions.append(close);
+  modal.append(heading, name, note, quote, actions);
+  backdrop.append(modal);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) backdrop.remove();
+  });
+  document.body.append(backdrop);
+}
+
+function paidSiteFromSheetRow(row) {
+  return normalizePaidSite({
+    id: getRowValue(row, ["id"]),
+    name: getRowValue(row, ["\u7db2\u7ad9\u540d\u7a31", "name"]),
+    domain: getRowValue(row, ["\u57df\u540d", "domain"]),
+    url: getRowValue(row, ["\u7db2\u5740", "url"]),
+    featureName: getRowValue(row, ["\u529f\u80fd\u540d\u7a31", "featureName", "feature"]),
+    note: getRowValue(row, ["\u529f\u80fd\u8aaa\u660e", "\u7c21\u77ed\u8aaa\u660e", "note", "description"]),
+    addedAt: getRowValue(row, ["\u5efa\u7acb\u6642\u9593", "addedAt"])
+  });
+}
+
+function paidSiteToCloudRow(site) {
+  return {
+    ...siteToCloudRow(site),
+    featureName: site.featureName || site.note || "",
+    note: site.note || ""
+  };
+}
+
+async function importPaidSpreadsheet(file) {
+  if (!requireLogin()) return;
+  const ext = file.name.split(".").pop().toLowerCase();
+  let rows = [];
+  if (ext === "csv" || ext === "tsv") {
+    const text = await file.text();
+    rows = parseCsv(text, ext === "tsv" ? "\t" : ",");
+  } else {
+    rows = window.XLSX ? await parseWithSheetJs(file) : await parseXlsxBasic(file);
+  }
+
+  const paid = normalizeImportedRows(rows)
+    .map((row) => normalizePaidSite({
+      featureName: getRowValue(row, ["\u529f\u80fd\u540d\u7a31", "featureName", "feature"]),
+      name: getRowValue(row, ["\u7db2\u7ad9\u540d\u7a31", "\u53c3\u8003\u7ad9\u540d\u7a31", "name", "Name"]),
+      domain: getRowValue(row, ["\u57df\u540d", "\u7db2\u5740", "URL", "url", "domain", "Domain"]),
+      note: getRowValue(row, ["\u529f\u80fd\u8aaa\u660e", "\u7c21\u77ed\u8aaa\u660e", "\u8aaa\u660e", "note", "description"])
+    }))
+    .filter(Boolean);
+
+  state.paidSites = uniqueSites([...state.paidSites, ...paid]);
+  saveState();
+  render();
 }
 
 els.toggleEditBtn.addEventListener("click", () => {
