@@ -10,6 +10,10 @@
       display: block !important;
     }
 
+    body:not(.is-logged-in) .app-shell {
+      grid-template-columns: 340px minmax(520px, 1fr) 360px !important;
+    }
+
     body:not(.is-logged-in) .utility-card:not(.login-only):not(.admin-only) {
       display: block !important;
     }
@@ -175,8 +179,8 @@
     </aside>
   </div>
 
-  <script src="reference-data.js?v=20260703-10"></script>
-  <script src="app.js?v=20260703-10"></script>
+  <script src="reference-data.js?v=20260703-11"></script>
+  <script src="app.js?v=20260703-11"></script>
   <script>
     (function fixLegacyLabels() {
       var labels = {

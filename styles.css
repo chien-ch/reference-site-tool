@@ -181,7 +181,7 @@ button,
 }
 
 body:not(.is-logged-in) .app-shell {
-  grid-template-columns: 340px minmax(520px, 1fr);
+  grid-template-columns: 340px minmax(520px, 1fr) 360px;
 }
 
 body:not(.is-logged-in) .login-only,
