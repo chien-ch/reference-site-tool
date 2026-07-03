@@ -5,6 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>案例助手 Directory Pro</title>
   <link rel="stylesheet" href="styles.css">
+  <style>
+    body:not(.is-logged-in) .utility-panel {
+      display: block !important;
+    }
+
+    body:not(.is-logged-in) .utility-card:not(.login-only):not(.admin-only) {
+      display: block !important;
+    }
+
+    body:not(.is-logged-in) .manage-only {
+      display: none !important;
+    }
+  </style>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -162,7 +175,25 @@
     </aside>
   </div>
 
-  <script src="reference-data.js?v=20260703-9"></script>
-  <script src="app.js?v=20260703-9"></script>
+  <script src="reference-data.js?v=20260703-10"></script>
+  <script src="app.js?v=20260703-10"></script>
+  <script>
+    (function fixLegacyLabels() {
+      var labels = {
+        "\u003f\u003f": "\u6536\u85cf",
+        "\u003f\u003f\u003f": "\u5df2\u6536\u85cf"
+      };
+
+      function applyFix() {
+        document.querySelectorAll("button").forEach(function (button) {
+          var text = button.textContent.trim();
+          if (labels[text]) button.textContent = labels[text];
+        });
+      }
+
+      applyFix();
+      new MutationObserver(applyFix).observe(document.body, { childList: true, subtree: true });
+    }());
+  </script>
 </body>
 </html>
