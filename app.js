@@ -1250,6 +1250,18 @@ function mergeOfficialSites(officialSites, officialPending) {
   officialPending.forEach((official) => {
     if (officialDomains.has(official.domain)) return;
     const existing = localSites.get(official.domain) || localPending.get(official.domain);
+    if (existing?.categoryOverridden && categoryExists(existing.categoryId)) {
+      nextSites.push({
+        ...official,
+        ...existing,
+        officialCategoryId: official.categoryId || "",
+        fromOfficial: true,
+        categoryOverridden: true,
+        hiddenByUser: Boolean(existing.hiddenByUser)
+      });
+      return;
+    }
+
     nextPending.push({
       ...(existing || {}),
       ...official,
