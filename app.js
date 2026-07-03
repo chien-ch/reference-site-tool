@@ -908,7 +908,8 @@ function createCategorySelect(value = "") {
 function deleteSite(id) {
   if (!requireLogin()) return;
   const site = state.sites.find((item) => item.id === id);
-  if (!site || !confirm(`確定從你的清單隱藏「${site.name}」？這不會刪除官方資料。`)) return;
+  if (!site) return;
+  if (!isAdmin() && !confirm(`確定從你的清單隱藏「${site.name}」？這不會刪除官方資料。`)) return;
   site.hiddenByUser = true;
   delete state.statuses[id];
   state.saved.delete(id);
