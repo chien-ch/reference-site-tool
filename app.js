@@ -405,30 +405,59 @@ function requireLogin() {
 }
 
 async function apiPost(payload) {
-  const response = await fetch(GOOGLE_SHEET_API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(payload)
-  });
-  return response.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    if (payload.action === "login") {
+      const url = `${GOOGLE_SHEET_API_URL}?action=login&username=${encodeURIComponent(payload.username || "")}&password=${encodeURIComponent(payload.password || "")}&t=${Date.now()}`;
+      const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+      return response.json();
+    }
+
+    const response = await fetch(GOOGLE_SHEET_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    return response.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function openLoginModal() {
   els.loginModal.hidden = false;
   els.loginMessage.textContent = "登入後會載入你的個人分類與參考站設定。";
+  els.loginForm.querySelector('button[type="submit"]').disabled = false;
   setTimeout(() => els.usernameInput.focus(), 0);
 }
 
 function closeLoginModal() {
   els.loginModal.hidden = true;
   els.passwordInput.value = "";
+  els.loginMessage.textContent = "登入後會載入你的個人分類與參考站設定。";
+  els.loginForm.querySelector('button[type="submit"]').disabled = false;
 }
 
 async function login(username, password) {
+  const submitBtn = els.loginForm.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
   els.loginMessage.textContent = "登入中...";
-  const result = await apiPost({ action: "login", username, password });
+
+  let result;
+  try {
+    result = await apiPost({ action: "login", username, password });
+  } catch (error) {
+    els.loginMessage.textContent = "登入失敗，請確認 Apps Script 已重新部署，或稍後再試。";
+    submitBtn.disabled = false;
+    return;
+  }
+
   if (!result.success) {
     els.loginMessage.textContent = result.message || "登入失敗，請確認帳號密碼。";
+    submitBtn.disabled = false;
     return;
   }
 
@@ -1452,6 +1481,7 @@ els.loginForm.addEventListener("submit", (event) => {
 
 async function initApp() {
   await loadSeedScriptIfNeeded();
+  closeLoginModal();
   state.currentUser = readJson(STORAGE.currentUser, null);
   updateAccountUi();
   loadState();
