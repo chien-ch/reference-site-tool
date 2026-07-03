@@ -188,8 +188,7 @@ body:not(.is-logged-in) .login-only,
 body:not(.is-logged-in) .manage-only,
 body:not(.is-logged-in) .sidebar-actions,
 body:not(.is-logged-in) .edit-hint,
-body:not(.is-logged-in) .category-tools,
-body:not(.is-logged-in) .utility-panel {
+body:not(.is-logged-in) .category-tools {
   display: none !important;
 }
 

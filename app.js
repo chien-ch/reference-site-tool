@@ -955,13 +955,13 @@ function createSiteCard(site) {
   const checkBtn = document.createElement("button");
   checkBtn.className = "small-btn";
   checkBtn.type = "button";
-  checkBtn.textContent = "檢查";
+  checkBtn.textContent = "\u6aa2\u67e5";
   checkBtn.addEventListener("click", () => checkSite(site));
 
   const favoriteBtn = document.createElement("button");
   favoriteBtn.className = "small-btn";
   favoriteBtn.type = "button";
-  favoriteBtn.textContent = state.saved.has(site.id) ? "???" : "??";
+  favoriteBtn.textContent = state.saved.has(site.id) ? "\u5df2\u6536\u85cf" : "\u6536\u85cf";
   favoriteBtn.addEventListener("click", () => {
     if (!requireLogin()) return;
     if (state.saved.has(site.id)) state.saved.delete(site.id);
@@ -973,7 +973,7 @@ function createSiteCard(site) {
   const deleteBtn = document.createElement("button");
   deleteBtn.className = "small-btn delete-btn";
   deleteBtn.type = "button";
-  deleteBtn.textContent = "刪除";
+  deleteBtn.textContent = "\u522a\u9664";
   deleteBtn.addEventListener("click", () => deleteSite(site.id));
 
   const select = createCategorySelect(site.categoryId);
@@ -990,13 +990,13 @@ function createSiteCard(site) {
 
   const zoneSelect = document.createElement("select");
   zoneSelect.className = "category-select compact-select";
-  zoneSelect.append(new Option("選擇專區", ""));
+  zoneSelect.append(new Option("\u9078\u64c7\u5c08\u5340", ""));
   state.zones.forEach((zone) => zoneSelect.append(new Option(zone.name, zone.id)));
 
   const zoneBtn = document.createElement("button");
   zoneBtn.className = "small-btn";
   zoneBtn.type = "button";
-  zoneBtn.textContent = "加入專區";
+  zoneBtn.textContent = "\u52a0\u5165\u5c08\u5340";
   zoneBtn.addEventListener("click", () => addSiteToZone(site.id, zoneSelect.value));
 
   const batchCheck = document.createElement("label");
@@ -1008,7 +1008,7 @@ function createSiteCard(site) {
     if (batchInput.checked) state.selectedForZone.add(site.id);
     else state.selectedForZone.delete(site.id);
   });
-  batchCheck.append(batchInput, document.createTextNode("勾選"));
+  batchCheck.append(batchInput, document.createTextNode("\u52fe\u9078"));
 
   card.append(link, checkBtn);
   if (isLoggedIn()) {
