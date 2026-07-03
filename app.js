@@ -327,24 +327,32 @@ function uniqueSites(sites) {
 }
 
 function loadState() {
-  const storedSites = readJson(STORAGE.sites, null);
+  const canUsePersonalState = isLoggedIn();
+  const storedSites = canUsePersonalState ? readJson(STORAGE.sites, null) : null;
   const seedSites = readSeedJson(STORAGE.sites, []);
   const shouldUseSeedData = Array.isArray(seedSites) && seedSites.length > 0 && (!Array.isArray(storedSites) || storedSites.length === 0);
 
-  state.categories = normalizeCategories(shouldUseSeedData ? readSeedJson(STORAGE.categories, []) : readStateJson(STORAGE.categories, []));
-  state.sites = uniqueSites(((shouldUseSeedData ? seedSites : readStateJson(STORAGE.sites, [])) || []).map(normalizeSite).filter(Boolean));
-  state.pending = uniqueSites(((shouldUseSeedData ? readSeedJson(STORAGE.pending, []) : readStateJson(STORAGE.pending, [])) || []).map(normalizeSite).filter(Boolean));
-  state.statuses = (shouldUseSeedData ? readSeedJson(STORAGE.statuses, {}) : readStateJson(STORAGE.statuses, {})) || {};
+  const readSource = (key, fallback) => canUsePersonalState && !shouldUseSeedData
+    ? readStateJson(key, fallback)
+    : readSeedJson(key, fallback);
+
+  state.categories = normalizeCategories(readSource(STORAGE.categories, []));
+  state.sites = uniqueSites(((shouldUseSeedData ? seedSites : readSource(STORAGE.sites, [])) || []).map(normalizeSite).filter(Boolean));
+  state.pending = uniqueSites((readSource(STORAGE.pending, []) || []).map(normalizeSite).filter(Boolean));
+  state.statuses = readSource(STORAGE.statuses, {}) || {};
   Object.keys(state.statuses).forEach((siteId) => {
     if (state.statuses[siteId] === "manual") {
       delete state.statuses[siteId];
     }
   });
-  state.saved = new Set((shouldUseSeedData ? readSeedJson(STORAGE.saved, []) : readStateJson(STORAGE.saved, [])) || []);
+  state.saved = new Set(readSource(STORAGE.saved, []) || []);
   state.categories.forEach((cat) => {
     if (cat.children.length) state.openCategories.add(cat.id);
   });
+  const previousSuppress = state.suppressDirty;
+  state.suppressDirty = true;
   saveState();
+  state.suppressDirty = previousSuppress;
 }
 
 function saveState() {
@@ -385,9 +393,19 @@ function setDirty(isDirty) {
   updateAccountUi();
 }
 
+function isLoggedIn() {
+  return Boolean(state.currentUser?.username);
+}
+
+function isAdmin() {
+  return ["admin", "superadmin"].includes(String(state.currentUser?.role || "").toLowerCase());
+}
+
 function updateAccountUi() {
   const name = state.currentUser?.username || "";
-  els.accountLabel.textContent = name ? `已登入：${name}` : "未登入";
+  els.body.classList.toggle("is-logged-in", Boolean(name));
+  els.body.classList.toggle("is-admin", isAdmin());
+  els.accountLabel.textContent = name ? `已登入：${name}${isAdmin() ? "（管理員）" : ""}` : "未登入";
   els.loginBtn.hidden = Boolean(name);
   els.logoutBtn.hidden = !name;
   els.saveUserBtn.hidden = !name;
@@ -395,12 +413,22 @@ function updateAccountUi() {
   els.saveUserBtn.textContent = state.isDirty ? "儲存變更" : "已儲存";
   els.saveUserBtn.classList.toggle("is-dirty", state.isDirty);
   els.saveUserBtn.classList.toggle("is-saved", Boolean(name) && !state.isDirty);
+  els.checkVisibleBtn.hidden = !name;
+  if (!name && state.editing) {
+    state.editing = false;
+  }
 }
 
 function requireLogin() {
-  if (state.currentUser) return true;
+  if (isLoggedIn()) return true;
   alert("請先登入帳號，登入後才能儲存你的個人分類與資料。");
   openLoginModal();
+  return false;
+}
+
+function requireAdmin() {
+  if (isAdmin()) return true;
+  alert("只有管理員帳號可以維護官方初始資料。");
   return false;
 }
 
@@ -489,11 +517,22 @@ async function saveUserData() {
   if (!state.currentUser) return;
   els.saveUserBtn.disabled = true;
   els.saveUserBtn.textContent = "儲存中...";
-  const result = await apiPost({
-    action: "saveUserData",
-    username: state.currentUser.username,
-    data: statePayload()
-  });
+  let result;
+  try {
+    result = await apiPost({
+      action: "saveUserData",
+      username: state.currentUser.username,
+      data: statePayload()
+    });
+    if (isAdmin()) {
+      await saveOfficialData();
+    }
+  } catch (error) {
+    console.error(error);
+    alert("儲存失敗，請確認 Apps Script 已重新部署，或稍後再試。");
+    updateAccountUi();
+    return;
+  }
 
   if (!result.success) {
     alert(result.message || "儲存失敗，請稍後再試。");
@@ -502,6 +541,19 @@ async function saveUserData() {
   }
 
   setDirty(false);
+}
+
+async function saveOfficialData() {
+  const post = (payload) => fetch(GOOGLE_SHEET_API_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  });
+
+  await post({ action: "saveCategories", categories: state.categories });
+  await post({ action: "saveSites", sites: state.sites.filter((site) => !site.hiddenByUser).map(siteToCloudRow) });
+  await post({ action: "savePending", pending: state.pending.filter((site) => !site.hiddenByUser).map(siteToCloudRow) });
 }
 
 function setSelectedCategory(id) {
@@ -748,9 +800,13 @@ function renderSites() {
 
 function createSiteCard(site) {
   const card = document.createElement("article");
-  card.className = "site-card";
-  card.draggable = true;
+  card.className = `site-card ${isLoggedIn() ? "" : "readonly"}`;
+  card.draggable = isLoggedIn();
   card.addEventListener("dragstart", (event) => {
+    if (!isLoggedIn()) {
+      event.preventDefault();
+      return;
+    }
     event.dataTransfer.setData("application/x-reference-site", site.id);
     event.dataTransfer.effectAllowed = "move";
   });
@@ -814,7 +870,10 @@ function createSiteCard(site) {
     render();
   });
 
-  card.append(link, checkBtn, saveBtn, deleteBtn, select);
+  card.append(link);
+  if (isLoggedIn()) {
+    card.append(checkBtn, saveBtn, deleteBtn, select);
+  }
   return card;
 }
 
@@ -1224,6 +1283,7 @@ async function loadCloudState() {
 
 async function importSpreadsheet(file) {
   if (!requireLogin()) return;
+  if (!requireAdmin()) return;
   const ext = file.name.split(".").pop().toLowerCase();
   let rows = [];
   if (ext === "csv" || ext === "tsv") {
