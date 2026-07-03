@@ -4,6 +4,8 @@ const STORAGE = {
   categories: "reference-categories",
   statuses: "reference-site-statuses",
   saved: "reference-saved",
+  zones: "reference-zones",
+  paidSites: "reference-paid-sites",
   currentUser: "reference-current-user"
 };
 
@@ -44,6 +46,9 @@ const state = {
   pending: [],
   statuses: {},
   saved: new Set(),
+  zones: [],
+  paidSites: [],
+  selectedForZone: new Set(),
   selectedCategory: "all",
   search: "",
   visibleCount: 12,
@@ -75,6 +80,21 @@ const els = {
   pendingCount: document.getElementById("pendingCount"),
   pendingList: document.getElementById("pendingList"),
   clearPendingBtn: document.getElementById("clearPendingBtn"),
+  favoritePanelBtn: document.getElementById("favoritePanelBtn"),
+  favoritePanel: document.getElementById("favoritePanel"),
+  favoriteCount: document.getElementById("favoriteCount"),
+  favoriteList: document.getElementById("favoriteList"),
+  zoneNameInput: document.getElementById("zoneNameInput"),
+  addZoneBtn: document.getElementById("addZoneBtn"),
+  batchZoneSelect: document.getElementById("batchZoneSelect"),
+  batchAddZoneBtn: document.getElementById("batchAddZoneBtn"),
+  zoneList: document.getElementById("zoneList"),
+  paidImportInput: document.getElementById("paidImportInput"),
+  paidNameInput: document.getElementById("paidNameInput"),
+  paidDomainInput: document.getElementById("paidDomainInput"),
+  paidNoteInput: document.getElementById("paidNoteInput"),
+  addPaidBtn: document.getElementById("addPaidBtn"),
+  paidList: document.getElementById("paidList"),
   accountLabel: document.getElementById("accountLabel"),
   loginBtn: document.getElementById("loginBtn"),
   logoutBtn: document.getElementById("logoutBtn"),
@@ -317,6 +337,15 @@ function normalizeSite(raw) {
   };
 }
 
+function normalizePaidSite(raw) {
+  const base = normalizeSite(raw);
+  if (!base) return null;
+  return {
+    ...base,
+    note: String(raw?.note || raw?.description || raw?.["簡短說明"] || raw?.["說明"] || "").trim()
+  };
+}
+
 function uniqueSites(sites) {
   const map = new Map();
   sites.forEach((site) => {
@@ -346,6 +375,8 @@ function loadState() {
     }
   });
   state.saved = new Set(readSource(STORAGE.saved, []) || []);
+  state.zones = readSource(STORAGE.zones, []) || [];
+  state.paidSites = (readSource(STORAGE.paidSites, []) || []).map(normalizePaidSite).filter(Boolean);
   state.categories.forEach((cat) => {
     if (cat.children.length) state.openCategories.add(cat.id);
   });
@@ -361,6 +392,8 @@ function saveState() {
   writeJson(STORAGE.pending, state.pending);
   writeJson(STORAGE.statuses, state.statuses);
   writeJson(STORAGE.saved, Array.from(state.saved));
+  writeJson(STORAGE.zones, state.zones);
+  writeJson(STORAGE.paidSites, state.paidSites);
   if (state.currentUser && !state.suppressDirty) {
     setDirty(true);
   }
@@ -372,7 +405,9 @@ function statePayload() {
     sites: state.sites,
     pending: state.pending,
     statuses: state.statuses,
-    saved: Array.from(state.saved)
+    saved: Array.from(state.saved),
+    zones: state.zones,
+    paidSites: state.paidSites
   };
 }
 
@@ -384,6 +419,8 @@ function applyUserPayload(payload) {
   if (Array.isArray(payload.pending)) state.pending = uniqueSites(payload.pending.map(normalizeSite).filter(Boolean));
   if (payload.statuses && typeof payload.statuses === "object") state.statuses = payload.statuses;
   if (Array.isArray(payload.saved)) state.saved = new Set(payload.saved);
+  if (Array.isArray(payload.zones)) state.zones = payload.zones;
+  if (Array.isArray(payload.paidSites)) state.paidSites = payload.paidSites.map(normalizePaidSite).filter(Boolean);
   saveState();
   state.suppressDirty = false;
 }
@@ -898,7 +935,7 @@ function createSiteCard(site) {
 
   const icon = document.createElement("div");
   icon.className = "site-icon";
-  icon.textContent = "◎";
+  icon.textContent = "?";
   const info = document.createElement("div");
   const name = document.createElement("div");
   name.className = "site-name";
@@ -916,25 +953,25 @@ function createSiteCard(site) {
   const checkBtn = document.createElement("button");
   checkBtn.className = "small-btn";
   checkBtn.type = "button";
-  checkBtn.textContent = "檢查";
+  checkBtn.textContent = "??";
   checkBtn.addEventListener("click", () => checkSite(site));
 
-  const saveBtn = document.createElement("button");
-  saveBtn.className = "small-btn";
-  saveBtn.type = "button";
-  saveBtn.textContent = state.saved.has(site.id) ? "★" : "☆";
-  saveBtn.addEventListener("click", () => {
+  const favoriteBtn = document.createElement("button");
+  favoriteBtn.className = "small-btn";
+  favoriteBtn.type = "button";
+  favoriteBtn.textContent = state.saved.has(site.id) ? "???" : "??";
+  favoriteBtn.addEventListener("click", () => {
     if (!requireLogin()) return;
     if (state.saved.has(site.id)) state.saved.delete(site.id);
     else state.saved.add(site.id);
     saveState();
-    renderSites();
+    render();
   });
 
   const deleteBtn = document.createElement("button");
   deleteBtn.className = "small-btn delete-btn";
   deleteBtn.type = "button";
-  deleteBtn.textContent = "刪除";
+  deleteBtn.textContent = "??";
   deleteBtn.addEventListener("click", () => deleteSite(site.id));
 
   const select = createCategorySelect(site.categoryId);
@@ -949,13 +986,34 @@ function createSiteCard(site) {
     render();
   });
 
+  const zoneSelect = document.createElement("select");
+  zoneSelect.className = "category-select compact-select";
+  zoneSelect.append(new Option("????", ""));
+  state.zones.forEach((zone) => zoneSelect.append(new Option(zone.name, zone.id)));
+
+  const zoneBtn = document.createElement("button");
+  zoneBtn.className = "small-btn";
+  zoneBtn.type = "button";
+  zoneBtn.textContent = "????";
+  zoneBtn.addEventListener("click", () => addSiteToZone(site.id, zoneSelect.value));
+
+  const batchCheck = document.createElement("label");
+  batchCheck.className = "site-check";
+  const batchInput = document.createElement("input");
+  batchInput.type = "checkbox";
+  batchInput.checked = state.selectedForZone.has(site.id);
+  batchInput.addEventListener("change", () => {
+    if (batchInput.checked) state.selectedForZone.add(site.id);
+    else state.selectedForZone.delete(site.id);
+  });
+  batchCheck.append(batchInput, document.createTextNode("??"));
+
   card.append(link, checkBtn);
   if (isLoggedIn()) {
-    card.append(saveBtn, deleteBtn, select);
+    card.append(batchCheck, favoriteBtn, deleteBtn, select, zoneSelect, zoneBtn);
   }
   return card;
 }
-
 function createCategorySelect(value = "") {
   const select = document.createElement("select");
   select.className = "category-select";
@@ -1098,10 +1156,198 @@ function classifyPending(id, categoryId) {
   render();
 }
 
+function siteById(id) {
+  return state.sites.find((site) => site.id === id)
+    || state.pending.find((site) => site.id === id)
+    || state.paidSites.find((site) => site.id === id);
+}
+
+function renderFavorites() {
+  if (!els.favoriteList) return;
+  const favorites = state.sites.filter((site) => state.saved.has(site.id) && !site.hiddenByUser);
+  els.favoriteCount.textContent = String(favorites.length);
+  els.favoriteList.innerHTML = "";
+  if (!favorites.length) {
+    els.favoriteList.innerHTML = '<div class="empty-state">目前沒有收藏資料。</div>';
+    return;
+  }
+  favorites.forEach((site) => els.favoriteList.append(createMiniSiteCard(site, {
+    actionText: "取消收藏",
+    onAction: () => {
+      state.saved.delete(site.id);
+      saveState();
+      render();
+    }
+  })));
+}
+
+function createMiniSiteCard(site, options = {}) {
+  const card = document.createElement("article");
+  card.className = "pending-card";
+  const title = document.createElement("div");
+  title.className = "pending-title";
+  title.textContent = site.name;
+  const domain = document.createElement("a");
+  domain.className = "pending-domain";
+  domain.href = site.url;
+  domain.target = "_blank";
+  domain.rel = "noopener noreferrer";
+  domain.textContent = site.url;
+  card.append(title, domain);
+
+  if (site.note) {
+    const note = document.createElement("p");
+    note.className = "mini-note";
+    note.textContent = site.note;
+    card.append(note);
+  }
+
+  if (options.actionText && options.onAction) {
+    const button = document.createElement("button");
+    button.className = "small-btn";
+    button.type = "button";
+    button.textContent = options.actionText;
+    button.addEventListener("click", options.onAction);
+    card.append(button);
+  }
+  return card;
+}
+
+function addZone() {
+  if (!requireLogin()) return;
+  const name = els.zoneNameInput.value.trim();
+  if (!name) return;
+  state.zones.push({ id: makeId("zone"), name, items: [] });
+  els.zoneNameInput.value = "";
+  saveState();
+  render();
+}
+
+function addSiteToZone(siteId, zoneId) {
+  if (!requireLogin()) return;
+  if (!zoneId) {
+    alert("請先選擇專區");
+    return;
+  }
+  const zone = state.zones.find((item) => item.id === zoneId);
+  if (!zone) return;
+  zone.items = zone.items || [];
+  zone.items.push({ id: makeId("zone-item"), siteId });
+  saveState();
+  render();
+}
+
+function renderZones() {
+  if (!els.zoneList) return;
+  if (els.batchZoneSelect) {
+    els.batchZoneSelect.innerHTML = "";
+    els.batchZoneSelect.append(new Option("選擇專區", ""));
+    state.zones.forEach((zone) => els.batchZoneSelect.append(new Option(zone.name, zone.id)));
+  }
+  els.zoneList.innerHTML = "";
+  if (!state.zones.length) {
+    els.zoneList.innerHTML = '<div class="empty-state">目前沒有專區。</div>';
+    return;
+  }
+  state.zones.forEach((zone) => {
+    const card = document.createElement("article");
+    card.className = "pending-card";
+    const title = document.createElement("div");
+    title.className = "pending-title";
+    title.textContent = `${zone.name}（${(zone.items || []).length}）`;
+    const removeZone = document.createElement("button");
+    removeZone.className = "small-btn delete-btn";
+    removeZone.type = "button";
+    removeZone.textContent = "刪除專區";
+    removeZone.addEventListener("click", () => {
+      state.zones = state.zones.filter((item) => item.id !== zone.id);
+      saveState();
+      render();
+    });
+    card.append(title, removeZone);
+    (zone.items || []).forEach((item) => {
+      const site = siteById(item.siteId);
+      if (!site) return;
+      card.append(createMiniSiteCard(site, {
+        actionText: "移除",
+        onAction: () => {
+          zone.items = zone.items.filter((entry) => entry.id !== item.id);
+          saveState();
+          render();
+        }
+      }));
+    });
+    els.zoneList.append(card);
+  });
+}
+
+function addSelectedSitesToZone() {
+  if (!requireLogin()) return;
+  const zoneId = els.batchZoneSelect?.value || "";
+  const zone = state.zones.find((item) => item.id === zoneId);
+  if (!zone) {
+    alert("請先選擇專區");
+    return;
+  }
+  const selected = Array.from(state.selectedForZone);
+  if (!selected.length) {
+    alert("請先勾選參考站");
+    return;
+  }
+  zone.items = zone.items || [];
+  selected.forEach((siteId) => {
+    zone.items.push({ id: makeId("zone-item"), siteId });
+  });
+  state.selectedForZone.clear();
+  saveState();
+  render();
+}
+
+function addPaidSite() {
+  if (!requireLogin()) return;
+  const site = normalizePaidSite({
+    name: els.paidNameInput.value,
+    domain: els.paidDomainInput.value,
+    note: els.paidNoteInput.value
+  });
+  if (!site) {
+    alert("請輸入網站名稱與域名");
+    return;
+  }
+  state.paidSites = uniqueSites([...state.paidSites, site]);
+  els.paidNameInput.value = "";
+  els.paidDomainInput.value = "";
+  els.paidNoteInput.value = "";
+  saveState();
+  render();
+}
+
+function renderPaidSites() {
+  if (!els.paidList) return;
+  els.paidList.innerHTML = "";
+  if (!state.paidSites.length) {
+    els.paidList.innerHTML = '<div class="empty-state">目前沒有付費功能網站。</div>';
+    return;
+  }
+  state.paidSites.forEach((site) => {
+    els.paidList.append(createMiniSiteCard(site, {
+      actionText: "刪除",
+      onAction: () => {
+        state.paidSites = state.paidSites.filter((item) => item.id !== site.id);
+        saveState();
+        render();
+      }
+    }));
+  });
+}
+
 function render() {
   renderCategories();
   renderSites();
   renderPending();
+  renderFavorites();
+  renderZones();
+  renderPaidSites();
 }
 
 function parseCsv(text, delimiter) {
@@ -1404,6 +1650,30 @@ async function importSpreadsheet(file) {
   render();
 }
 
+async function importPaidSpreadsheet(file) {
+  if (!requireLogin()) return;
+  const ext = file.name.split(".").pop().toLowerCase();
+  let rows = [];
+  if (ext === "csv" || ext === "tsv") {
+    const text = await file.text();
+    rows = parseCsv(text, ext === "tsv" ? "\t" : ",");
+  } else {
+    rows = window.XLSX ? await parseWithSheetJs(file) : await parseXlsxBasic(file);
+  }
+
+  const paid = normalizeImportedRows(rows)
+    .map((row) => normalizePaidSite({
+      name: getRowValue(row, ["網站名稱", "name", "Name"]),
+      domain: getRowValue(row, ["域名", "網址", "URL", "url", "domain", "Domain"]),
+      note: getRowValue(row, ["簡短說明", "說明", "功能", "note", "description"])
+    }))
+    .filter(Boolean);
+
+  state.paidSites = uniqueSites([...state.paidSites, ...paid]);
+  saveState();
+  render();
+}
+
 async function parseWithSheetJs(file) {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array" });
@@ -1595,7 +1865,10 @@ els.loadMoreBtn.addEventListener("click", () => {
   renderSites();
 });
 els.checkVisibleBtn.addEventListener("click", checkVisibleSites);
-els.exportBackupBtn.addEventListener("click", exportBackup);
+els.exportBackupBtn.addEventListener("click", () => {
+  if (!requireLogin()) return;
+  exportBackup();
+});
 els.importInput.addEventListener("change", (event) => {
   const file = event.target.files[0];
   if (file) {
@@ -1611,6 +1884,37 @@ if (els.backupInput) {
   els.backupInput.addEventListener("change", (event) => {
     const file = event.target.files[0];
     if (file) restoreBackup(file);
+    event.target.value = "";
+  });
+}
+if (els.favoritePanelBtn && els.favoritePanel) {
+  els.favoritePanelBtn.addEventListener("click", () => {
+    els.favoritePanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+if (els.addZoneBtn) {
+  els.addZoneBtn.addEventListener("click", addZone);
+}
+if (els.batchAddZoneBtn) {
+  els.batchAddZoneBtn.addEventListener("click", addSelectedSitesToZone);
+}
+if (els.zoneNameInput) {
+  els.zoneNameInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") addZone();
+  });
+}
+if (els.addPaidBtn) {
+  els.addPaidBtn.addEventListener("click", addPaidSite);
+}
+if (els.paidImportInput) {
+  els.paidImportInput.addEventListener("change", (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      importPaidSpreadsheet(file).catch((error) => {
+        console.error(error);
+        alert(error.message || "付費參考站匯入失敗。");
+      });
+    }
     event.target.value = "";
   });
 }

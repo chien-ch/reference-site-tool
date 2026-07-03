@@ -17,11 +17,12 @@
     </div>
     <div class="account-bar">
       <span class="account-label" id="accountLabel">未登入</span>
+      <button class="ghost-btn login-only" id="favoritePanelBtn" type="button">收藏區</button>
       <button class="ghost-btn account-save" id="saveUserBtn" type="button" disabled>已儲存</button>
       <button class="ghost-btn" id="loginBtn" type="button">登入</button>
       <button class="ghost-btn" id="logoutBtn" type="button" hidden>登出</button>
     </div>
-    <button class="ghost-btn" id="exportBackupBtn" type="button">下載備份</button>
+    <button class="ghost-btn login-only" id="exportBackupBtn" type="button">下載備份</button>
   </header>
 
   <button class="mobile-sidebar-backdrop" id="mobileSidebarBackdrop" type="button" aria-label="關閉分類選單"></button>
@@ -47,13 +48,15 @@
 
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="sidebar-heading">▦ BROWSE CATEGORIES</div>
-      <div class="sidebar-actions">
-        <button class="small-btn" id="toggleEditBtn" type="button">編輯分類</button>
-        <button class="small-btn" id="addCategoryBtn" type="button">新增分類</button>
-        <button class="small-btn" id="addChildBtn" type="button">新增子分類</button>
+      <div class="sidebar-tools">
+        <div class="sidebar-heading">▦ BROWSE CATEGORIES</div>
+        <div class="sidebar-actions">
+          <button class="small-btn" id="toggleEditBtn" type="button">編輯分類</button>
+          <button class="small-btn" id="addCategoryBtn" type="button">新增分類</button>
+          <button class="small-btn" id="addChildBtn" type="button">新增子分類</button>
+        </div>
+        <p class="edit-hint" id="editHint">編輯模式可調整順序、改名、刪除，也能拖曳主分類到另一個主分類下變成子分類。</p>
       </div>
-      <p class="edit-hint" id="editHint">編輯模式可調整順序、改名、刪除，也能拖曳主分類到另一個主分類下變成子分類。</p>
       <nav class="category-list" id="categoryList"></nav>
     </aside>
 
@@ -97,6 +100,55 @@
         <p class="muted" id="importStatus">尚未匯入檔案。</p>
       </section>
 
+      <section class="utility-card login-only" id="favoritePanel">
+        <div class="utility-head">
+          <div>
+            <p class="kicker">FAVORITES</p>
+            <h2>收藏區</h2>
+          </div>
+          <span class="count-pill" id="favoriteCount">0</span>
+        </div>
+        <div class="pending-list" id="favoriteList"></div>
+      </section>
+
+      <section class="utility-card login-only">
+        <div class="utility-head">
+          <div>
+            <p class="kicker">WORKSPACE</p>
+            <h2>專區</h2>
+          </div>
+        </div>
+        <div class="zone-create">
+          <input id="zoneNameInput" type="text" placeholder="例如：表單功能、詢價車、購物車">
+          <button class="primary-btn" id="addZoneBtn" type="button">新增專區</button>
+        </div>
+        <div class="zone-create">
+          <select id="batchZoneSelect" class="category-select"></select>
+          <button class="primary-btn" id="batchAddZoneBtn" type="button">勾選加入專區</button>
+        </div>
+        <div class="pending-list" id="zoneList"></div>
+      </section>
+
+      <section class="utility-card login-only">
+        <div class="utility-head">
+          <div>
+            <p class="kicker">PAID TOOLS</p>
+            <h2>付費專區</h2>
+          </div>
+        </div>
+        <label class="primary-btn full">
+          匯入付費參考站
+          <input id="paidImportInput" type="file" accept=".xlsx,.xls,.csv,.tsv" hidden>
+        </label>
+        <div class="zone-create">
+          <input id="paidNameInput" type="text" placeholder="網站名稱">
+          <input id="paidDomainInput" type="text" placeholder="域名">
+          <input id="paidNoteInput" type="text" placeholder="簡短說明">
+          <button class="primary-btn" id="addPaidBtn" type="button">新增</button>
+        </div>
+        <div class="pending-list" id="paidList"></div>
+      </section>
+
       <section class="utility-card login-only">
         <div class="utility-head">
           <div>
@@ -110,7 +162,7 @@
     </aside>
   </div>
 
-  <script src="reference-data.js?v=20260703-5"></script>
-  <script src="app.js?v=20260703-5"></script>
+  <script src="reference-data.js?v=20260703-6"></script>
+  <script src="app.js?v=20260703-6"></script>
 </body>
 </html>
