@@ -15,10 +15,35 @@
       <div class="brand-title">案例助手</div>
       <div class="brand-subtitle">DIRECTORY PRO</div>
     </div>
+    <div class="account-bar">
+      <span class="account-label" id="accountLabel">未登入</span>
+      <button class="ghost-btn account-save" id="saveUserBtn" type="button" disabled>已儲存</button>
+      <button class="ghost-btn" id="loginBtn" type="button">登入</button>
+      <button class="ghost-btn" id="logoutBtn" type="button" hidden>登出</button>
+    </div>
     <button class="ghost-btn" id="exportBackupBtn" type="button">下載備份</button>
   </header>
 
   <button class="mobile-sidebar-backdrop" id="mobileSidebarBackdrop" type="button" aria-label="關閉分類選單"></button>
+
+  <div class="modal-backdrop" id="loginModal" hidden>
+    <form class="login-modal" id="loginForm">
+      <h2>登入帳號</h2>
+      <label>
+        帳號
+        <input id="usernameInput" type="text" autocomplete="username" required>
+      </label>
+      <label>
+        密碼
+        <input id="passwordInput" type="password" autocomplete="current-password" required>
+      </label>
+      <p class="muted" id="loginMessage">登入後會載入你的個人分類與參考站設定。</p>
+      <div class="login-actions">
+        <button class="ghost-btn" id="cancelLoginBtn" type="button">取消</button>
+        <button class="primary-btn" type="submit">登入</button>
+      </div>
+    </form>
+  </div>
 
   <div class="app-shell">
     <aside class="sidebar">

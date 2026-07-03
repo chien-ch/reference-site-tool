@@ -77,6 +77,86 @@ button,
   margin-left: auto;
 }
 
+.account-bar {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.account-label {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.account-save.is-dirty {
+  background: #fff7e7;
+  border-color: #efc36d;
+  color: #8a5a00;
+}
+
+.account-save.is-saved {
+  background: #edf8f2;
+  border-color: #b9e6ce;
+  color: #11764d;
+}
+
+.topbar > #exportBackupBtn {
+  margin-left: 0;
+}
+
+.modal-backdrop {
+  align-items: center;
+  background: rgba(6, 26, 61, 0.46);
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  padding: 20px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 100;
+}
+
+.login-modal {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(16, 34, 68, 0.24);
+  display: grid;
+  gap: 14px;
+  max-width: 380px;
+  padding: 24px;
+  width: 100%;
+}
+
+.login-modal h2 {
+  color: var(--ink);
+  margin: 0;
+}
+
+.login-modal label {
+  color: var(--text);
+  display: grid;
+  font-size: 14px;
+  gap: 6px;
+}
+
+.login-modal input {
+  border: 1px solid #cfdcf0;
+  border-radius: 9px;
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+.login-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .mobile-menu-btn,
 .mobile-sidebar-backdrop {
   display: none;
@@ -576,6 +656,14 @@ button,
     font-size: 12px;
     min-height: 34px;
     padding: 6px 9px;
+  }
+
+  .account-bar {
+    gap: 5px;
+  }
+
+  .account-label {
+    display: none;
   }
 
   .app-shell {

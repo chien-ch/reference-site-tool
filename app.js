@@ -3,7 +3,8 @@ const STORAGE = {
   pending: "reference-pending-sites",
   categories: "reference-categories",
   statuses: "reference-site-statuses",
-  saved: "reference-saved"
+  saved: "reference-saved",
+  currentUser: "reference-current-user"
 };
 
 const GOOGLE_SHEET_API_URL = "https://script.google.com/macros/s/AKfycbw369DYHZGnNLsRcBb3ZOEdwG2Huo4gC4h6Q2J-dvflWjOUcDVlaJIprBohfa6UwSd0/exec";
@@ -47,7 +48,10 @@ const state = {
   search: "",
   visibleCount: 12,
   editing: false,
-  openCategories: new Set()
+  openCategories: new Set(),
+  currentUser: null,
+  isDirty: false,
+  suppressDirty: false
 };
 
 const els = {
@@ -70,7 +74,17 @@ const els = {
   importStatus: document.getElementById("importStatus"),
   pendingCount: document.getElementById("pendingCount"),
   pendingList: document.getElementById("pendingList"),
-  clearPendingBtn: document.getElementById("clearPendingBtn")
+  clearPendingBtn: document.getElementById("clearPendingBtn"),
+  accountLabel: document.getElementById("accountLabel"),
+  loginBtn: document.getElementById("loginBtn"),
+  logoutBtn: document.getElementById("logoutBtn"),
+  saveUserBtn: document.getElementById("saveUserBtn"),
+  loginModal: document.getElementById("loginModal"),
+  loginForm: document.getElementById("loginForm"),
+  usernameInput: document.getElementById("usernameInput"),
+  passwordInput: document.getElementById("passwordInput"),
+  loginMessage: document.getElementById("loginMessage"),
+  cancelLoginBtn: document.getElementById("cancelLoginBtn")
 };
 
 function slug(text) {
@@ -339,6 +353,126 @@ function saveState() {
   writeJson(STORAGE.pending, state.pending);
   writeJson(STORAGE.statuses, state.statuses);
   writeJson(STORAGE.saved, Array.from(state.saved));
+  if (state.currentUser && !state.suppressDirty) {
+    setDirty(true);
+  }
+}
+
+function statePayload() {
+  return {
+    categories: state.categories,
+    sites: state.sites,
+    pending: state.pending,
+    statuses: state.statuses,
+    saved: Array.from(state.saved)
+  };
+}
+
+function applyUserPayload(payload) {
+  if (!payload) return;
+  state.suppressDirty = true;
+  if (Array.isArray(payload.categories)) state.categories = normalizeCategories(payload.categories);
+  if (Array.isArray(payload.sites)) state.sites = uniqueSites(payload.sites.map(normalizeSite).filter(Boolean));
+  if (Array.isArray(payload.pending)) state.pending = uniqueSites(payload.pending.map(normalizeSite).filter(Boolean));
+  if (payload.statuses && typeof payload.statuses === "object") state.statuses = payload.statuses;
+  if (Array.isArray(payload.saved)) state.saved = new Set(payload.saved);
+  saveState();
+  state.suppressDirty = false;
+}
+
+function setDirty(isDirty) {
+  state.isDirty = isDirty;
+  updateAccountUi();
+}
+
+function updateAccountUi() {
+  const name = state.currentUser?.username || "";
+  els.accountLabel.textContent = name ? `已登入：${name}` : "未登入";
+  els.loginBtn.hidden = Boolean(name);
+  els.logoutBtn.hidden = !name;
+  els.saveUserBtn.hidden = !name;
+  els.saveUserBtn.disabled = !name || !state.isDirty;
+  els.saveUserBtn.textContent = state.isDirty ? "儲存變更" : "已儲存";
+  els.saveUserBtn.classList.toggle("is-dirty", state.isDirty);
+  els.saveUserBtn.classList.toggle("is-saved", Boolean(name) && !state.isDirty);
+}
+
+function requireLogin() {
+  if (state.currentUser) return true;
+  alert("請先登入帳號，登入後才能儲存你的個人分類與資料。");
+  openLoginModal();
+  return false;
+}
+
+async function apiPost(payload) {
+  const response = await fetch(GOOGLE_SHEET_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  });
+  return response.json();
+}
+
+function openLoginModal() {
+  els.loginModal.hidden = false;
+  els.loginMessage.textContent = "登入後會載入你的個人分類與參考站設定。";
+  setTimeout(() => els.usernameInput.focus(), 0);
+}
+
+function closeLoginModal() {
+  els.loginModal.hidden = true;
+  els.passwordInput.value = "";
+}
+
+async function login(username, password) {
+  els.loginMessage.textContent = "登入中...";
+  const result = await apiPost({ action: "login", username, password });
+  if (!result.success) {
+    els.loginMessage.textContent = result.message || "登入失敗，請確認帳號密碼。";
+    return;
+  }
+
+  state.currentUser = { username: result.username || username, role: result.role || "user" };
+  localStorage.setItem(STORAGE.currentUser, JSON.stringify(state.currentUser));
+
+  if (result.data) {
+    applyUserPayload(result.data);
+  }
+
+  setDirty(false);
+  closeLoginModal();
+  updateAccountUi();
+  render();
+}
+
+function logout() {
+  if (state.isDirty && !confirm("你有尚未儲存的變更，確定要登出？")) return;
+  state.currentUser = null;
+  localStorage.removeItem(STORAGE.currentUser);
+  setDirty(false);
+  updateAccountUi();
+  loadState();
+  render();
+  loadCloudState();
+}
+
+async function saveUserData() {
+  if (!state.currentUser) return;
+  els.saveUserBtn.disabled = true;
+  els.saveUserBtn.textContent = "儲存中...";
+  const result = await apiPost({
+    action: "saveUserData",
+    username: state.currentUser.username,
+    data: statePayload()
+  });
+
+  if (!result.success) {
+    alert(result.message || "儲存失敗，請稍後再試。");
+    updateAccountUi();
+    return;
+  }
+
+  setDirty(false);
 }
 
 function setSelectedCategory(id) {
@@ -463,6 +597,7 @@ function renderCategories() {
 }
 
 function renameCategory(id) {
+  if (!requireLogin()) return;
   const found = findCategory(id);
   if (!found) return;
   const nextName = prompt("請輸入新的分類名稱", found.category.name);
@@ -473,6 +608,7 @@ function renameCategory(id) {
 }
 
 function addCategory() {
+  if (!requireLogin()) return;
   const name = prompt("請輸入主分類名稱");
   if (!name || !name.trim()) return;
   const category = { id: makeId("cat"), name: name.trim(), children: [] };
@@ -481,6 +617,7 @@ function addCategory() {
 }
 
 function addChildCategory() {
+  if (!requireLogin()) return;
   const parentId = state.selectedCategory === "all" ? state.categories[0]?.id : state.selectedCategory;
   const found = findCategory(parentId);
   const parent = found?.parent || found?.category || state.categories[0];
@@ -494,6 +631,7 @@ function addChildCategory() {
 }
 
 function deleteCategory(id) {
+  if (!requireLogin()) return;
   const label = categoryLabel(id);
   if (!confirm(`確定刪除「${label}」？此分類底下的參考站會改成未分類。`)) return;
   state.categories = state.categories
@@ -508,6 +646,7 @@ function deleteCategory(id) {
 }
 
 function moveCategory(id, direction) {
+  if (!requireLogin()) return;
   const found = findCategory(id);
   if (!found) return;
   const list = found.parent ? found.parent.children : state.categories;
@@ -520,6 +659,7 @@ function moveCategory(id, direction) {
 }
 
 function dropCategory(draggedId, targetId) {
+  if (!requireLogin()) return;
   const dragged = findCategory(draggedId);
   const target = findCategory(targetId);
   if (!dragged || !target || target.parent) return;
@@ -620,6 +760,7 @@ function createSiteCard(site) {
   saveBtn.type = "button";
   saveBtn.textContent = state.saved.has(site.id) ? "★" : "☆";
   saveBtn.addEventListener("click", () => {
+    if (!requireLogin()) return;
     if (state.saved.has(site.id)) state.saved.delete(site.id);
     else state.saved.add(site.id);
     saveState();
@@ -634,6 +775,10 @@ function createSiteCard(site) {
 
   const select = createCategorySelect(site.categoryId);
   select.addEventListener("change", () => {
+    if (!requireLogin()) {
+      select.value = site.categoryId || "";
+      return;
+    }
     site.categoryId = select.value;
     site.categoryOverridden = true;
     saveState();
@@ -656,6 +801,7 @@ function createCategorySelect(value = "") {
 }
 
 function deleteSite(id) {
+  if (!requireLogin()) return;
   const site = state.sites.find((item) => item.id === id);
   if (!site || !confirm(`確定從你的清單隱藏「${site.name}」？這不會刪除官方資料。`)) return;
   site.hiddenByUser = true;
@@ -666,6 +812,7 @@ function deleteSite(id) {
 }
 
 function moveSiteToCategory(id, categoryId) {
+  if (!requireLogin()) return;
   const site = state.sites.find((item) => item.id === id);
   if (!site) return;
   site.categoryId = categoryId;
@@ -675,6 +822,7 @@ function moveSiteToCategory(id, categoryId) {
 }
 
 async function checkSite(site) {
+  if (!requireLogin()) return;
   state.statuses[site.id] = "checking";
   saveState();
   renderSites();
@@ -753,6 +901,7 @@ function renderPending() {
     deleteBtn.type = "button";
     deleteBtn.textContent = "刪除";
     deleteBtn.addEventListener("click", () => {
+      if (!requireLogin()) return;
       site.hiddenByUser = true;
       state.sites = uniqueSites([...state.sites, site]);
       state.pending = state.pending.filter((item) => item.id !== site.id);
@@ -766,6 +915,7 @@ function renderPending() {
 }
 
 function classifyPending(id, categoryId) {
+  if (!requireLogin()) return;
   if (!categoryId) {
     alert("請先選擇分類");
     return;
@@ -1044,6 +1194,7 @@ async function loadCloudState() {
 }
 
 async function importSpreadsheet(file) {
+  if (!requireLogin()) return;
   const ext = file.name.split(".").pop().toLowerCase();
   let rows = [];
   if (ext === "csv" || ext === "tsv") {
@@ -1241,6 +1392,7 @@ function exportBackup() {
 }
 
 els.toggleEditBtn.addEventListener("click", () => {
+  if (!state.editing && !requireLogin()) return;
   state.editing = !state.editing;
   renderCategories();
 });
@@ -1282,14 +1434,26 @@ if (els.backupInput) {
   });
 }
 els.clearPendingBtn.addEventListener("click", () => {
+  if (!requireLogin()) return;
   if (!confirm("確定清空所有待分類資料？")) return;
   state.pending = [];
   saveState();
   renderPending();
 });
 
+els.loginBtn.addEventListener("click", openLoginModal);
+els.logoutBtn.addEventListener("click", logout);
+els.cancelLoginBtn.addEventListener("click", closeLoginModal);
+els.saveUserBtn.addEventListener("click", saveUserData);
+els.loginForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  login(els.usernameInput.value.trim(), els.passwordInput.value);
+});
+
 async function initApp() {
   await loadSeedScriptIfNeeded();
+  state.currentUser = readJson(STORAGE.currentUser, null);
+  updateAccountUi();
   loadState();
   render();
   loadCloudState();
