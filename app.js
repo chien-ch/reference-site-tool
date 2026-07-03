@@ -664,7 +664,9 @@ async function saveOfficialData() {
   const payloads = [
     { action: "saveCategories", categories: state.categories },
     { action: "saveSites", sites: state.sites.filter((site) => !site.hiddenByUser).map(siteToCloudRow) },
-    { action: "savePending", pending: state.pending.filter((site) => !site.hiddenByUser).map(siteToCloudRow) }
+    { action: "savePending", pending: state.pending.filter((site) => !site.hiddenByUser).map(siteToCloudRow) },
+    { action: "saveZones", zones: state.zones },
+    { action: "savePaidSites", paidSites: state.paidSites.map(paidSiteToCloudRow) }
   ];
 
   for (const payload of payloads) {
@@ -953,7 +955,7 @@ function createSiteCard(site) {
   const checkBtn = document.createElement("button");
   checkBtn.className = "small-btn";
   checkBtn.type = "button";
-  checkBtn.textContent = "??";
+  checkBtn.textContent = "檢查";
   checkBtn.addEventListener("click", () => checkSite(site));
 
   const favoriteBtn = document.createElement("button");
@@ -971,7 +973,7 @@ function createSiteCard(site) {
   const deleteBtn = document.createElement("button");
   deleteBtn.className = "small-btn delete-btn";
   deleteBtn.type = "button";
-  deleteBtn.textContent = "??";
+  deleteBtn.textContent = "刪除";
   deleteBtn.addEventListener("click", () => deleteSite(site.id));
 
   const select = createCategorySelect(site.categoryId);
@@ -988,13 +990,13 @@ function createSiteCard(site) {
 
   const zoneSelect = document.createElement("select");
   zoneSelect.className = "category-select compact-select";
-  zoneSelect.append(new Option("????", ""));
+  zoneSelect.append(new Option("選擇專區", ""));
   state.zones.forEach((zone) => zoneSelect.append(new Option(zone.name, zone.id)));
 
   const zoneBtn = document.createElement("button");
   zoneBtn.className = "small-btn";
   zoneBtn.type = "button";
-  zoneBtn.textContent = "????";
+  zoneBtn.textContent = "加入專區";
   zoneBtn.addEventListener("click", () => addSiteToZone(site.id, zoneSelect.value));
 
   const batchCheck = document.createElement("label");
@@ -1006,7 +1008,7 @@ function createSiteCard(site) {
     if (batchInput.checked) state.selectedForZone.add(site.id);
     else state.selectedForZone.delete(site.id);
   });
-  batchCheck.append(batchInput, document.createTextNode("??"));
+  batchCheck.append(batchInput, document.createTextNode("勾選"));
 
   card.append(link, checkBtn);
   if (isLoggedIn()) {
@@ -1484,10 +1486,45 @@ function categoriesFromSheetRows(rows) {
   return Array.from(parents.values());
 }
 
+function zonesFromSheetRows(rows) {
+  return rows.map((row) => {
+    const id = String(getRowValue(row, ["專區ID", "id"]) || "").trim();
+    const name = String(getRowValue(row, ["專區名稱", "name"]) || "").trim();
+    const itemsText = String(getRowValue(row, ["項目JSON", "itemsJSON", "items"]) || "[]");
+    if (!id || !name) return null;
+    let items = [];
+    try {
+      items = JSON.parse(itemsText || "[]");
+    } catch {
+      items = [];
+    }
+    return { id, name, items: Array.isArray(items) ? items : [] };
+  }).filter(Boolean);
+}
+
+function mergeZones(localZones, officialZones) {
+  const map = new Map();
+  officialZones.forEach((zone) => map.set(zone.id, structuredClone(zone)));
+  localZones.forEach((zone) => map.set(zone.id, structuredClone(zone)));
+  return Array.from(map.values());
+}
+
+function paidSiteFromSheetRow(row) {
+  return normalizePaidSite({
+    id: getRowValue(row, ["id"]),
+    name: getRowValue(row, ["網站名稱", "name"]),
+    domain: getRowValue(row, ["域名", "domain"]),
+    url: getRowValue(row, ["網址", "url"]),
+    note: getRowValue(row, ["簡短說明", "說明", "note"])
+  });
+}
+
 function applyCloudData(data) {
   const cloudSites = Array.isArray(data?.sites) ? data.sites : [];
   const cloudPending = Array.isArray(data?.pending) ? data.pending : [];
   const cloudCategories = Array.isArray(data?.categories) ? data.categories : [];
+  const cloudZones = Array.isArray(data?.zones) ? data.zones : [];
+  const cloudPaidSites = Array.isArray(data?.paidSites) ? data.paidSites : [];
 
   const officialSites = uniqueSites(cloudSites.map(siteFromSheetRow).filter(Boolean));
   const officialPending = uniqueSites(cloudPending.map(siteFromSheetRow).filter(Boolean));
@@ -1509,6 +1546,16 @@ function applyCloudData(data) {
     state.categories = isLoggedIn()
       ? mergeOfficialCategories(officialCategories)
       : officialCategories;
+  }
+
+  const officialZones = zonesFromSheetRows(cloudZones);
+  if (officialZones.length) {
+    state.zones = isLoggedIn() ? mergeZones(state.zones, officialZones) : officialZones;
+  }
+
+  const officialPaidSites = uniqueSites(cloudPaidSites.map(paidSiteFromSheetRow).filter(Boolean));
+  if (officialPaidSites.length) {
+    state.paidSites = isLoggedIn() ? uniqueSites([...officialPaidSites, ...state.paidSites]) : officialPaidSites;
   }
 
   mergeOfficialSites(officialSites, officialPending);
@@ -1605,6 +1652,13 @@ function siteToCloudRow(site) {
     status: getStatusText(state.statuses[site.id] || "unknown"),
     saved: state.saved.has(site.id),
     addedAt: site.addedAt || ""
+  };
+}
+
+function paidSiteToCloudRow(site) {
+  return {
+    ...siteToCloudRow(site),
+    note: site.note || ""
   };
 }
 
