@@ -460,6 +460,15 @@ async function apiPost(payload) {
   }
 }
 
+async function apiPostNoCors(payload) {
+  await fetch(GOOGLE_SHEET_API_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  });
+}
+
 function openLoginModal() {
   els.loginModal.hidden = false;
   els.loginMessage.textContent = "登入後會載入你的個人分類與參考站設定。";
@@ -534,9 +543,8 @@ async function saveUserData() {
   if (!state.currentUser) return;
   els.saveUserBtn.disabled = true;
   els.saveUserBtn.textContent = isAdmin() ? "同步官方資料中..." : "儲存中...";
-  let result;
   try {
-    result = await apiPost({
+    await apiPostNoCors({
       action: "saveUserData",
       username: state.currentUser.username,
       data: statePayload()
@@ -547,12 +555,6 @@ async function saveUserData() {
   } catch (error) {
     console.error(error);
     alert("儲存失敗，請確認 Apps Script 已重新部署，或稍後再試。");
-    updateAccountUi();
-    return;
-  }
-
-  if (!result.success) {
-    alert(result.message || "儲存失敗，請稍後再試。");
     updateAccountUi();
     return;
   }
@@ -568,10 +570,7 @@ async function saveOfficialData() {
   ];
 
   for (const payload of payloads) {
-    const result = await apiPost(payload);
-    if (!result.success) {
-      throw new Error(result.message || "官方資料儲存失敗");
-    }
+    await apiPostNoCors(payload);
   }
 }
 
