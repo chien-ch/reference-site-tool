@@ -437,15 +437,54 @@ function requireAdmin() {
   return false;
 }
 
+function apiGet(params = {}) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `gas_callback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const url = new URL(GOOGLE_SHEET_API_URL);
+    Object.entries(params).forEach(([key, value]) => {
+      url.searchParams.set(key, value ?? "");
+    });
+    url.searchParams.set("callback", callbackName);
+    url.searchParams.set("t", Date.now());
+
+    const script = document.createElement("script");
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Google Sheet API 讀取逾時"));
+    }, 12000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[callbackName];
+      script.remove();
+    }
+
+    window[callbackName] = (data) => {
+      cleanup();
+      resolve(data);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("Google Sheet API 讀取失敗"));
+    };
+
+    script.src = url.toString();
+    document.head.append(script);
+  });
+}
+
 async function apiPost(payload) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
 
   try {
     if (payload.action === "login") {
-      const url = `${GOOGLE_SHEET_API_URL}?action=login&username=${encodeURIComponent(payload.username || "")}&password=${encodeURIComponent(payload.password || "")}&t=${Date.now()}`;
-      const response = await fetch(url, { cache: "no-store", signal: controller.signal });
-      return response.json();
+      return apiGet({
+        action: "login",
+        username: payload.username || "",
+        password: payload.password || ""
+      });
     }
 
     const response = await fetch(GOOGLE_SHEET_API_URL, {
@@ -1325,9 +1364,7 @@ function siteToCloudRow(site) {
 
 async function loadCloudState() {
   try {
-    const response = await fetch(`${GOOGLE_SHEET_API_URL}?t=${Date.now()}`, { cache: "no-store" });
-    if (!response.ok) throw new Error("Google Sheet API 讀取失敗");
-    const data = await response.json();
+    const data = await apiGet();
     applyCloudData(data);
     saveState();
     render();
@@ -1598,6 +1635,10 @@ async function initApp() {
   await loadSeedScriptIfNeeded();
   closeLoginModal();
   state.currentUser = readJson(STORAGE.currentUser, null);
+  if (state.currentUser?.role === "驗證中") {
+    state.currentUser = null;
+    localStorage.removeItem(STORAGE.currentUser);
+  }
   updateAccountUi();
   loadState();
   render();
