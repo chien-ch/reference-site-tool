@@ -419,7 +419,6 @@ function updateAccountUi() {
   els.saveUserBtn.textContent = state.isDirty ? "儲存變更" : "已儲存";
   els.saveUserBtn.classList.toggle("is-dirty", state.isDirty);
   els.saveUserBtn.classList.toggle("is-saved", Boolean(name) && !state.isDirty);
-  els.checkVisibleBtn.hidden = !name;
   if (!name && state.editing) {
     state.editing = false;
   }
@@ -480,18 +479,31 @@ async function login(username, password) {
   submitBtn.disabled = true;
   els.loginMessage.textContent = "登入中...";
 
+  state.currentUser = { username, role: "驗證中" };
+  localStorage.setItem(STORAGE.currentUser, JSON.stringify(state.currentUser));
+  setDirty(false);
+  closeLoginModal();
+  updateAccountUi();
+  render();
+
   let result;
   try {
     result = await apiPost({ action: "login", username, password });
   } catch (error) {
-    els.loginMessage.textContent = "登入失敗，請確認 Apps Script 已重新部署，或稍後再試。";
-    submitBtn.disabled = false;
+    state.currentUser = null;
+    localStorage.removeItem(STORAGE.currentUser);
+    updateAccountUi();
+    render();
+    alert("登入失敗，請確認 Apps Script 已重新部署，或稍後再試。");
     return;
   }
 
   if (!result.success) {
-    els.loginMessage.textContent = result.message || "登入失敗，請確認帳號密碼。";
-    submitBtn.disabled = false;
+    state.currentUser = null;
+    localStorage.removeItem(STORAGE.currentUser);
+    updateAccountUi();
+    render();
+    alert(result.message || "登入失敗，請確認帳號密碼。");
     return;
   }
 
@@ -503,7 +515,6 @@ async function login(username, password) {
   }
 
   setDirty(false);
-  closeLoginModal();
   updateAccountUi();
   render();
 }
@@ -876,9 +887,9 @@ function createSiteCard(site) {
     render();
   });
 
-  card.append(link);
+  card.append(link, checkBtn);
   if (isLoggedIn()) {
-    card.append(checkBtn, saveBtn, deleteBtn, select);
+    card.append(saveBtn, deleteBtn, select);
   }
   return card;
 }
@@ -916,7 +927,6 @@ function moveSiteToCategory(id, categoryId) {
 }
 
 async function checkSite(site) {
-  if (!requireLogin()) return;
   state.statuses[site.id] = "checking";
   saveState();
   renderSites();
