@@ -461,11 +461,33 @@ async function apiPost(payload) {
 }
 
 async function apiPostNoCors(payload) {
-  await fetch(GOOGLE_SHEET_API_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(payload)
+  await new Promise((resolve) => {
+    const frameName = `gas_submit_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const frame = document.createElement("iframe");
+    frame.name = frameName;
+    frame.hidden = true;
+
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = GOOGLE_SHEET_API_URL;
+    form.target = frameName;
+    form.enctype = "text/plain";
+    form.hidden = true;
+
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "payload";
+    input.value = JSON.stringify(payload);
+
+    form.append(input);
+    document.body.append(frame, form);
+    form.submit();
+
+    setTimeout(() => {
+      form.remove();
+      frame.remove();
+      resolve();
+    }, 1200);
   });
 }
 
