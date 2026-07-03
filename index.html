@@ -3,15 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>案例助手 Directory Pro</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>&#26696;&#20363;&#21161;&#25163; Directory Pro</title>
+  <link rel="stylesheet" href="styles.css?v=20260703-12">
   <style>
-    body:not(.is-logged-in) .utility-panel {
-      display: block !important;
+    body:not(.is-logged-in) .app-shell {
+      display: grid !important;
+      grid-template-columns: 340px minmax(520px, 1fr) 360px !important;
     }
 
-    body:not(.is-logged-in) .app-shell {
-      grid-template-columns: 340px minmax(520px, 1fr) 360px !important;
+    body:not(.is-logged-in) .utility-panel {
+      display: block !important;
+      grid-column: 3 !important;
+      position: sticky !important;
+      top: 60px !important;
     }
 
     body:not(.is-logged-in) .utility-card:not(.login-only):not(.admin-only) {
@@ -21,44 +25,61 @@
     body:not(.is-logged-in) .manage-only {
       display: none !important;
     }
+
+    @media (max-width: 1280px) {
+      body:not(.is-logged-in) .app-shell {
+        grid-template-columns: 300px minmax(460px, 1fr) !important;
+      }
+
+      body:not(.is-logged-in) .utility-panel {
+        grid-column: 2 !important;
+        position: static !important;
+      }
+    }
+
+    @media (max-width: 860px) {
+      body:not(.is-logged-in) .app-shell {
+        display: block !important;
+      }
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <header class="topbar">
-    <button class="mobile-menu-btn" id="mobileCategoryBtn" type="button" aria-label="開啟分類選單">☰</button>
-    <div class="brand-mark">▦</div>
+    <button class="mobile-menu-btn" id="mobileCategoryBtn" type="button" aria-label="&#38283;&#21855;&#20998;&#39006;&#36984;&#21934;">&#9776;</button>
+    <div class="brand-mark">&#9638;</div>
     <div>
-      <div class="brand-title">案例助手</div>
+      <div class="brand-title">&#26696;&#20363;&#21161;&#25163;</div>
       <div class="brand-subtitle">DIRECTORY PRO</div>
     </div>
     <div class="account-bar">
-      <span class="account-label" id="accountLabel">未登入</span>
-      <button class="ghost-btn login-only" id="favoritePanelBtn" type="button">收藏區</button>
-      <button class="ghost-btn account-save" id="saveUserBtn" type="button" disabled>已儲存</button>
-      <button class="ghost-btn" id="loginBtn" type="button">登入</button>
-      <button class="ghost-btn" id="logoutBtn" type="button" hidden>登出</button>
+      <span class="account-label" id="accountLabel">&#26410;&#30331;&#20837;</span>
+      <button class="ghost-btn login-only" id="favoritePanelBtn" type="button">&#25910;&#34255;&#21312;</button>
+      <button class="ghost-btn account-save" id="saveUserBtn" type="button" disabled>&#24050;&#20786;&#23384;</button>
+      <button class="ghost-btn" id="loginBtn" type="button">&#30331;&#20837;</button>
+      <button class="ghost-btn" id="logoutBtn" type="button" hidden>&#30331;&#20986;</button>
     </div>
-    <button class="ghost-btn login-only" id="exportBackupBtn" type="button">下載備份</button>
+    <button class="ghost-btn login-only" id="exportBackupBtn" type="button">&#19979;&#36617;&#20633;&#20221;</button>
   </header>
 
-  <button class="mobile-sidebar-backdrop" id="mobileSidebarBackdrop" type="button" aria-label="關閉分類選單"></button>
+  <button class="mobile-sidebar-backdrop" id="mobileSidebarBackdrop" type="button" aria-label="&#38364;&#38281;&#20998;&#39006;&#36984;&#21934;"></button>
 
   <div class="modal-backdrop" id="loginModal" hidden>
     <form class="login-modal" id="loginForm">
-      <h2>登入帳號</h2>
+      <h2>&#30331;&#20837;&#24115;&#34399;</h2>
       <label>
-        帳號
+        &#24115;&#34399;
         <input id="usernameInput" type="text" autocomplete="username" required>
       </label>
       <label>
-        密碼
+        &#23494;&#30908;
         <input id="passwordInput" type="password" autocomplete="current-password" required>
       </label>
-      <p class="muted" id="loginMessage">登入後會載入你的個人分類與參考站設定。</p>
+      <p class="muted" id="loginMessage">&#30331;&#20837;&#24460;&#25165;&#26371;&#36617;&#20837;&#20491;&#20154;&#36039;&#26009;&#33287;&#21487;&#32232;&#36655;&#21151;&#33021;&#12290;</p>
       <div class="login-actions">
-        <button class="ghost-btn" id="cancelLoginBtn" type="button">取消</button>
-        <button class="primary-btn" type="submit">登入</button>
+        <button class="ghost-btn" id="cancelLoginBtn" type="button">&#21462;&#28040;</button>
+        <button class="primary-btn" type="submit">&#30331;&#20837;</button>
       </div>
     </form>
   </div>
@@ -66,13 +87,13 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="sidebar-tools">
-        <div class="sidebar-heading">▦ BROWSE CATEGORIES</div>
+        <div class="sidebar-heading">&#9638; BROWSE CATEGORIES</div>
         <div class="sidebar-actions">
-          <button class="small-btn" id="toggleEditBtn" type="button">編輯分類</button>
-          <button class="small-btn" id="addCategoryBtn" type="button">新增分類</button>
-          <button class="small-btn" id="addChildBtn" type="button">新增子分類</button>
+          <button class="small-btn" id="toggleEditBtn" type="button">&#32232;&#36655;&#20998;&#39006;</button>
+          <button class="small-btn" id="addCategoryBtn" type="button">&#26032;&#22686;&#20998;&#39006;</button>
+          <button class="small-btn" id="addChildBtn" type="button">&#26032;&#22686;&#23376;&#20998;&#39006;</button>
         </div>
-        <p class="edit-hint" id="editHint">編輯模式可調整順序、改名、刪除，也能拖曳主分類到另一個主分類下變成子分類。</p>
+        <p class="edit-hint" id="editHint">&#32232;&#36655;&#27169;&#24335;&#21487;&#35519;&#25972;&#38918;&#24207;&#12289;&#25913;&#21517;&#12289;&#21034;&#38500;&#65292;&#20063;&#33021;&#25226;&#20027;&#20998;&#39006;&#25302;&#21040;&#21478;&#19968;&#20491;&#20027;&#20998;&#39006;&#19979;&#35722;&#25104;&#23376;&#20998;&#39006;&#12290;</p>
       </div>
       <nav class="category-list" id="categoryList"></nav>
     </aside>
@@ -80,11 +101,11 @@
     <main class="content">
       <section class="hero">
         <p class="kicker">REFERENCE FINDER</p>
-        <h1>想找什麼產業的案例？</h1>
-        <p>輸入產業名稱或關鍵字，快速獲取精選參考網站。</p>
+        <h1>&#24819;&#25214;&#20160;&#40636;&#29986;&#26989;&#30340;&#26696;&#20363;&#65311;</h1>
+        <p>&#36664;&#20837;&#29986;&#26989;&#21517;&#31281;&#25110;&#38364;&#37749;&#23383;&#65292;&#24555;&#36895;&#25847;&#21462;&#31934;&#36984;&#21443;&#32771;&#32178;&#31449;&#12290;</p>
         <label class="search-box">
-          <span>⌕</span>
-          <input id="searchInput" type="search" placeholder="輸入關鍵字，例如：寵物、醫療、餐飲、當舖...">
+          <span>&#9906;</span>
+          <input id="searchInput" type="search" placeholder="&#36664;&#20837;&#38364;&#37749;&#23383;&#65292;&#20363;&#22914;&#65306;&#23541;&#29289;&#12289;&#37291;&#30274;&#12289;&#39184;&#39154;&#12289;&#30070;&#33302;...">
         </label>
       </section>
 
@@ -92,10 +113,10 @@
         <div class="panel-head">
           <div>
             <p class="kicker">MATCHES FOUND</p>
-            <h2 id="resultTitle">所有案例</h2>
+            <h2 id="resultTitle">&#25152;&#26377;&#26696;&#20363;</h2>
           </div>
           <div class="panel-actions">
-            <button class="small-btn" id="checkVisibleBtn" type="button">檢查目前列表</button>
+            <button class="small-btn" id="checkVisibleBtn" type="button">&#27298;&#26597;&#30446;&#21069;&#21015;&#34920;</button>
             <span class="count-pill" id="resultCount">0 Results</span>
           </div>
         </div>
@@ -107,21 +128,21 @@
     <aside class="utility-panel">
       <section class="utility-card admin-only">
         <p class="kicker">MONTHLY IMPORT</p>
-        <h2>匯入每月新參考站</h2>
-        <p>支援 .xlsx、.csv、.tsv，只讀取「網站名稱」與「域名」。</p>
+        <h2>&#21295;&#20837;&#27599;&#26376;&#26032;&#21443;&#32771;&#31449;</h2>
+        <p>&#25903;&#25588; .xlsx&#12289;.csv&#12289;.tsv&#65292;&#21482;&#35712;&#21462;&#12300;&#32178;&#31449;&#21517;&#31281;&#12301;&#33287;&#12300;&#22495;&#21517;&#12301;&#12290;</p>
         <label class="primary-btn">
-          上傳 Excel
+          &#19978;&#20659; Excel
           <input id="importInput" type="file" accept=".xlsx,.xls,.csv,.tsv" hidden>
         </label>
-        <button class="ghost-btn full" id="clearPendingBtn" type="button">清空待分類</button>
-        <p class="muted" id="importStatus">尚未匯入檔案。</p>
+        <button class="ghost-btn full" id="clearPendingBtn" type="button">&#28165;&#31354;&#24453;&#20998;&#39006;</button>
+        <p class="muted" id="importStatus">&#23578;&#26410;&#21295;&#20837;&#27284;&#26696;&#12290;</p>
       </section>
 
       <section class="utility-card login-only" id="favoritePanel">
         <div class="utility-head">
           <div>
             <p class="kicker">FAVORITES</p>
-            <h2>收藏區</h2>
+            <h2>&#25910;&#34255;&#21312;</h2>
           </div>
           <span class="count-pill" id="favoriteCount">0</span>
         </div>
@@ -132,16 +153,16 @@
         <div class="utility-head">
           <div>
             <p class="kicker">WORKSPACE</p>
-            <h2>專區</h2>
+            <h2>&#23560;&#21312;</h2>
           </div>
         </div>
         <div class="zone-create manage-only">
-          <input id="zoneNameInput" type="text" placeholder="例如：表單功能、詢價車、購物車">
-          <button class="primary-btn" id="addZoneBtn" type="button">新增專區</button>
+          <input id="zoneNameInput" type="text" placeholder="&#20363;&#22914;&#65306;&#34920;&#21934;&#21151;&#33021;&#12289;&#35426;&#20729;&#36554;&#12289;&#36092;&#29289;&#36554;">
+          <button class="primary-btn" id="addZoneBtn" type="button">&#26032;&#22686;&#23560;&#21312;</button>
         </div>
         <div class="zone-create manage-only">
           <select id="batchZoneSelect" class="category-select"></select>
-          <button class="primary-btn" id="batchAddZoneBtn" type="button">勾選加入專區</button>
+          <button class="primary-btn" id="batchAddZoneBtn" type="button">&#21246;&#36984;&#21152;&#20837;&#23560;&#21312;</button>
         </div>
         <div class="pending-list" id="zoneList"></div>
       </section>
@@ -150,18 +171,18 @@
         <div class="utility-head">
           <div>
             <p class="kicker">PAID TOOLS</p>
-            <h2>付費專區</h2>
+            <h2>&#20184;&#36027;&#23560;&#21312;</h2>
           </div>
         </div>
         <label class="primary-btn full manage-only">
-          匯入付費參考站
+          &#21295;&#20837;&#20184;&#36027;&#21443;&#32771;&#31449;
           <input id="paidImportInput" type="file" accept=".xlsx,.xls,.csv,.tsv" hidden>
         </label>
         <div class="zone-create manage-only">
-          <input id="paidNameInput" type="text" placeholder="網站名稱">
-          <input id="paidDomainInput" type="text" placeholder="域名">
-          <input id="paidNoteInput" type="text" placeholder="簡短說明">
-          <button class="primary-btn" id="addPaidBtn" type="button">新增</button>
+          <input id="paidNameInput" type="text" placeholder="&#32178;&#31449;&#21517;&#31281;">
+          <input id="paidDomainInput" type="text" placeholder="&#22495;&#21517;">
+          <input id="paidNoteInput" type="text" placeholder="&#31777;&#30701;&#35498;&#26126;">
+          <button class="primary-btn" id="addPaidBtn" type="button">&#26032;&#22686;</button>
         </div>
         <div class="pending-list" id="paidList"></div>
       </section>
@@ -170,7 +191,7 @@
         <div class="utility-head">
           <div>
             <p class="kicker">NEEDS SORTING</p>
-            <h2>待分類參考站</h2>
+            <h2>&#24453;&#20998;&#39006;&#21443;&#32771;&#31449;</h2>
           </div>
           <span class="count-pill" id="pendingCount">0 Pending</span>
         </div>
@@ -179,25 +200,7 @@
     </aside>
   </div>
 
-  <script src="reference-data.js?v=20260703-11"></script>
-  <script src="app.js?v=20260703-11"></script>
-  <script>
-    (function fixLegacyLabels() {
-      var labels = {
-        "\u003f\u003f": "\u6536\u85cf",
-        "\u003f\u003f\u003f": "\u5df2\u6536\u85cf"
-      };
-
-      function applyFix() {
-        document.querySelectorAll("button").forEach(function (button) {
-          var text = button.textContent.trim();
-          if (labels[text]) button.textContent = labels[text];
-        });
-      }
-
-      applyFix();
-      new MutationObserver(applyFix).observe(document.body, { childList: true, subtree: true });
-    }());
-  </script>
+  <script src="reference-data.js?v=20260703-12"></script>
+  <script src="app.js?v=20260703-12"></script>
 </body>
 </html>

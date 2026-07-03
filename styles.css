@@ -478,6 +478,16 @@ body:not(.is-admin) .admin-only {
   width: 52px;
 }
 
+.site-icon svg {
+  fill: none;
+  height: 25px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  width: 25px;
+}
+
 .site-name {
   color: var(--ink);
   font-size: 17px;
@@ -563,6 +573,7 @@ body:not(.is-admin) .admin-only {
 
 .utility-panel {
   border-left: 1px solid var(--line);
+  grid-column: 3;
   height: calc(100vh - 60px);
   overflow: auto;
   padding: 24px 18px 60px;

@@ -937,7 +937,7 @@ function createSiteCard(site) {
 
   const icon = document.createElement("div");
   icon.className = "site-icon";
-  icon.textContent = "\u25ce";
+  icon.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8"></circle><path d="M3.5 12h17"></path><path d="M12 3.5c2 2.2 3 5 3 8.5s-1 6.3-3 8.5"></path><path d="M12 3.5c-2 2.2-3 5-3 8.5s1 6.3 3 8.5"></path></svg>';
   const info = document.createElement("div");
   const name = document.createElement("div");
   name.className = "site-name";
