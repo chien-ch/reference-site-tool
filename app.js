@@ -533,7 +533,7 @@ function logout() {
 async function saveUserData() {
   if (!state.currentUser) return;
   els.saveUserBtn.disabled = true;
-  els.saveUserBtn.textContent = "儲存中...";
+  els.saveUserBtn.textContent = isAdmin() ? "同步官方資料中..." : "儲存中...";
   let result;
   try {
     result = await apiPost({
@@ -561,16 +561,18 @@ async function saveUserData() {
 }
 
 async function saveOfficialData() {
-  const post = (payload) => fetch(GOOGLE_SHEET_API_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(payload)
-  });
+  const payloads = [
+    { action: "saveCategories", categories: state.categories },
+    { action: "saveSites", sites: state.sites.filter((site) => !site.hiddenByUser).map(siteToCloudRow) },
+    { action: "savePending", pending: state.pending.filter((site) => !site.hiddenByUser).map(siteToCloudRow) }
+  ];
 
-  await post({ action: "saveCategories", categories: state.categories });
-  await post({ action: "saveSites", sites: state.sites.filter((site) => !site.hiddenByUser).map(siteToCloudRow) });
-  await post({ action: "savePending", pending: state.pending.filter((site) => !site.hiddenByUser).map(siteToCloudRow) });
+  for (const payload of payloads) {
+    const result = await apiPost(payload);
+    if (!result.success) {
+      throw new Error(result.message || "官方資料儲存失敗");
+    }
+  }
 }
 
 function setSelectedCategory(id) {
