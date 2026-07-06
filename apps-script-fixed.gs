@@ -46,7 +46,11 @@ const HEADERS = {
     items: "\u9805\u76eeJSON"
   },
   paid: {
-    note: "\u7c21\u77ed\u8aaa\u660e"
+    featureName: "\u529f\u80fd\u540d\u7a31",
+    note: "\u529f\u80fd\u8aaa\u660e",
+    attachmentName: "\u9644\u4ef6\u540d\u7a31",
+    attachmentType: "\u9644\u4ef6\u985e\u578b",
+    attachmentUrl: "\u9644\u4ef6\u9023\u7d50"
   }
 };
 
@@ -251,26 +255,77 @@ function savePaidSites(paidSites) {
   const sheet = ss.getSheetByName(SHEETS.paidSites) || ss.insertSheet(SHEETS.paidSites);
   const headers = [
     HEADERS.site.id,
+    HEADERS.paid.featureName,
     HEADERS.site.name,
     HEADERS.site.domain,
     HEADERS.site.url,
     HEADERS.paid.note,
+    HEADERS.paid.attachmentName,
+    HEADERS.paid.attachmentType,
+    HEADERS.paid.attachmentUrl,
     HEADERS.site.addedAt
   ];
-  const rows = paidSites.map(site => [
-    site.id || "",
-    site.name || "",
-    site.domain || "",
-    site.url || "",
-    site.note || "",
-    site.addedAt || ""
-  ]);
+  const rows = paidSites.map(site => {
+    const attachment = savePaidAttachment(site);
+    return [
+      site.id || "",
+      site.featureName || site.note || "",
+      site.name || "",
+      site.domain || "",
+      site.url || "",
+      site.note || "",
+      attachment.name || "",
+      attachment.type || "",
+      attachment.url || "",
+      site.addedAt || ""
+    ];
+  });
 
   sheet.clearContents();
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   if (rows.length) {
     sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
   }
+}
+
+function savePaidAttachment(site) {
+  const existing = {
+    name: site.attachmentName || "",
+    type: site.attachmentType || "",
+    url: site.attachmentUrl || ""
+  };
+
+  if (!site.attachmentData) return existing;
+
+  const match = String(site.attachmentData).match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return existing;
+
+  const mimeType = match[1] || site.attachmentType || "application/octet-stream";
+  const bytes = Utilities.base64Decode(match[2]);
+  const safeName = sanitizeFileName(site.attachmentName || site.name || "paid-tool-attachment");
+  const blob = Utilities.newBlob(bytes, mimeType, safeName);
+  const folder = getPaidAttachmentFolder();
+  const file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  return {
+    name: safeName,
+    type: mimeType,
+    url: file.getUrl()
+  };
+}
+
+function getPaidAttachmentFolder() {
+  const folderName = "\u53c3\u8003\u7ad9\u4ed8\u8cbb\u5c08\u5340\u9644\u4ef6";
+  const folders = DriveApp.getFoldersByName(folderName);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(folderName);
+}
+
+function sanitizeFileName(name) {
+  return String(name || "attachment")
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .slice(0, 120);
 }
 
 function loginUser(username, password) {

@@ -94,6 +94,7 @@ const els = {
   paidNameInput: document.getElementById("paidNameInput"),
   paidDomainInput: document.getElementById("paidDomainInput"),
   paidNoteInput: document.getElementById("paidNoteInput"),
+  paidAttachmentInput: document.getElementById("paidAttachmentInput"),
   addPaidBtn: document.getElementById("addPaidBtn"),
   paidList: document.getElementById("paidList"),
   accountLabel: document.getElementById("accountLabel"),
@@ -1927,8 +1928,53 @@ function normalizePaidSite(raw) {
     url,
     featureName,
     note,
+    attachmentUrl: String(raw?.attachmentUrl || raw?.["\u9644\u4ef6\u9023\u7d50"] || "").trim(),
+    attachmentName: String(raw?.attachmentName || raw?.["\u9644\u4ef6\u540d\u7a31"] || "").trim(),
+    attachmentType: String(raw?.attachmentType || raw?.["\u9644\u4ef6\u985e\u578b"] || "").trim(),
+    attachmentData: raw?.attachmentData || "",
     addedAt: raw?.addedAt || new Date().toISOString()
   };
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("\u9644\u4ef6\u8b80\u53d6\u5931\u6557\u3002"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function readPaidAttachmentFromInput(input) {
+  const file = input?.files?.[0];
+  if (!file) return {};
+  const maxBytes = 5 * 1024 * 1024;
+  if (file.size > maxBytes) {
+    throw new Error("\u9644\u4ef6\u8acb\u63a7\u5236\u5728 5MB \u4ee5\u5167\uff0cPDF/Word \u82e5\u904e\u5927\u8acb\u5148\u7e2e\u5c0f\u6216\u6539\u653e\u96f2\u7aef\u9023\u7d50\u3002");
+  }
+  return {
+    attachmentName: file.name,
+    attachmentType: file.type || "application/octet-stream",
+    attachmentData: await fileToDataUrl(file)
+  };
+}
+
+function appendPaidAttachmentLink(container, site) {
+  if (!site.attachmentUrl && !site.attachmentData) return;
+  if (!site.attachmentUrl) {
+    const pending = document.createElement("span");
+    pending.className = "paid-attachment-link";
+    pending.textContent = site.attachmentName ? `\u9644\u4ef6\u5f85\u540c\u6b65\uff1a${site.attachmentName}` : "\u9644\u4ef6\u5f85\u540c\u6b65";
+    container.append(pending);
+    return;
+  }
+  const link = document.createElement("a");
+  link.className = "paid-attachment-link";
+  link.href = site.attachmentUrl;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = site.attachmentName ? `\u67e5\u770b\u9644\u4ef6\uff1a${site.attachmentName}` : "\u67e5\u770b\u9644\u4ef6";
+  container.append(link);
 }
 
 function createMiniSiteCard(site, options = {}) {
@@ -2055,14 +2101,21 @@ function addSelectedSitesToZone() {
   render();
 }
 
-function addPaidSite() {
-  if (!requireLogin()) return;
+async function addPaidSite() {
+  if (!requireAdmin()) return;
   const featureName = (els.paidFeatureInput?.value || "").trim();
   const name = (els.paidNameInput?.value || "").trim();
   const domain = normalizeDomain(els.paidDomainInput?.value || "");
   const note = (els.paidNoteInput?.value || "").trim();
   if (!featureName || !name) {
     alert("\u8acb\u8f38\u5165\u4ed8\u8cbb\u529f\u80fd\u540d\u7a31\u8207\u53c3\u8003\u7ad9\u540d\u7a31");
+    return;
+  }
+  let attachment = {};
+  try {
+    attachment = await readPaidAttachmentFromInput(els.paidAttachmentInput);
+  } catch (error) {
+    alert(error.message || "\u9644\u4ef6\u8b80\u53d6\u5931\u6557\u3002");
     return;
   }
   state.paidSites = uniqueSites([...state.paidSites, {
@@ -2072,12 +2125,14 @@ function addPaidSite() {
     url: domain ? ensureUrl(domain) : "",
     featureName,
     note,
+    ...attachment,
     addedAt: new Date().toISOString()
   }]);
   if (els.paidFeatureInput) els.paidFeatureInput.value = "";
   els.paidNameInput.value = "";
   els.paidDomainInput.value = "";
   els.paidNoteInput.value = "";
+  if (els.paidAttachmentInput) els.paidAttachmentInput.value = "";
   saveState();
   render();
 }
@@ -2134,8 +2189,16 @@ function renderPaidSites() {
         detailBtn.addEventListener("click", () => openInfoModal(featureName, site));
         item.append(detailBtn);
       }
+      appendPaidAttachmentLink(item, site);
 
-      if (isLoggedIn()) {
+      if (isAdmin()) {
+        const editBtn = document.createElement("button");
+        editBtn.className = "small-btn";
+        editBtn.type = "button";
+        editBtn.textContent = "\u7de8\u8f2f";
+        editBtn.addEventListener("click", () => openPaidEditModal(site.id));
+        item.append(editBtn);
+
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "small-btn delete-btn";
         deleteBtn.type = "button";
@@ -2195,6 +2258,90 @@ function openInfoModal(title, site) {
   document.body.append(backdrop);
 }
 
+function openPaidEditModal(siteId) {
+  if (!requireAdmin()) return;
+  const site = state.paidSites.find((item) => item.id === siteId);
+  if (!site) return;
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop info-modal-backdrop";
+  const modal = document.createElement("form");
+  modal.className = "login-modal paid-edit-modal";
+
+  const heading = document.createElement("h2");
+  heading.textContent = "\u7de8\u8f2f\u4ed8\u8cbb\u9805\u76ee";
+  const featureInput = document.createElement("input");
+  featureInput.type = "text";
+  featureInput.value = site.featureName || "";
+  featureInput.placeholder = "\u4ed8\u8cbb\u529f\u80fd\u540d\u7a31";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.value = site.name || "";
+  nameInput.placeholder = "\u53c3\u8003\u7ad9\u540d\u7a31";
+  const domainInput = document.createElement("input");
+  domainInput.type = "text";
+  domainInput.value = site.domain || "";
+  domainInput.placeholder = "\u57df\u540d\uff08\u53ef\u7559\u7a7a\uff09";
+  const noteInput = document.createElement("textarea");
+  noteInput.value = site.note || "";
+  noteInput.placeholder = "\u529f\u80fd\u8aaa\u660e";
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "image/*,.pdf,.doc,.docx";
+
+  const currentFile = document.createElement("p");
+  currentFile.className = "info-modal-site";
+  currentFile.textContent = site.attachmentUrl
+    ? `\u76ee\u524d\u9644\u4ef6\uff1a${site.attachmentName || site.attachmentUrl}`
+    : "\u76ee\u524d\u6c92\u6709\u9644\u4ef6\u3002";
+
+  const actions = document.createElement("div");
+  actions.className = "login-actions";
+  const cancel = document.createElement("button");
+  cancel.className = "ghost-btn";
+  cancel.type = "button";
+  cancel.textContent = "\u53d6\u6d88";
+  cancel.addEventListener("click", () => backdrop.remove());
+  const save = document.createElement("button");
+  save.className = "primary-btn";
+  save.type = "submit";
+  save.textContent = "\u5132\u5b58";
+  actions.append(cancel, save);
+
+  modal.append(heading, featureInput, nameInput, domainInput, noteInput, fileInput, currentFile, actions);
+  modal.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const featureName = featureInput.value.trim();
+    const name = nameInput.value.trim();
+    if (!featureName || !name) {
+      alert("\u8acb\u8f38\u5165\u4ed8\u8cbb\u529f\u80fd\u540d\u7a31\u8207\u53c3\u8003\u7ad9\u540d\u7a31");
+      return;
+    }
+    let attachment = {};
+    try {
+      attachment = await readPaidAttachmentFromInput(fileInput);
+    } catch (error) {
+      alert(error.message || "\u9644\u4ef6\u8b80\u53d6\u5931\u6557\u3002");
+      return;
+    }
+    site.featureName = featureName;
+    site.name = name;
+    site.domain = normalizeDomain(domainInput.value);
+    site.url = site.domain ? ensureUrl(site.domain) : "";
+    site.note = noteInput.value.trim();
+    Object.assign(site, attachment);
+    saveState();
+    render();
+    backdrop.remove();
+  });
+
+  backdrop.append(modal);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) backdrop.remove();
+  });
+  document.body.append(backdrop);
+}
+
 function paidSiteFromSheetRow(row) {
   return normalizePaidSite({
     id: getRowValue(row, ["id"]),
@@ -2203,6 +2350,9 @@ function paidSiteFromSheetRow(row) {
     url: getRowValue(row, ["\u7db2\u5740", "url"]),
     featureName: getRowValue(row, ["\u529f\u80fd\u540d\u7a31", "featureName", "feature"]),
     note: getRowValue(row, ["\u529f\u80fd\u8aaa\u660e", "\u7c21\u77ed\u8aaa\u660e", "note", "description"]),
+    attachmentUrl: getRowValue(row, ["\u9644\u4ef6\u9023\u7d50", "attachmentUrl"]),
+    attachmentName: getRowValue(row, ["\u9644\u4ef6\u540d\u7a31", "attachmentName"]),
+    attachmentType: getRowValue(row, ["\u9644\u4ef6\u985e\u578b", "attachmentType"]),
     addedAt: getRowValue(row, ["\u5efa\u7acb\u6642\u9593", "addedAt"])
   });
 }
@@ -2211,12 +2361,16 @@ function paidSiteToCloudRow(site) {
   return {
     ...siteToCloudRow(site),
     featureName: site.featureName || site.note || "",
-    note: site.note || ""
+    note: site.note || "",
+    attachmentUrl: site.attachmentUrl || "",
+    attachmentName: site.attachmentName || "",
+    attachmentType: site.attachmentType || "",
+    attachmentData: site.attachmentData || ""
   };
 }
 
 async function importPaidSpreadsheet(file) {
-  if (!requireLogin()) return;
+  if (!requireAdmin()) return;
   const ext = file.name.split(".").pop().toLowerCase();
   let rows = [];
   if (ext === "csv" || ext === "tsv") {
@@ -2238,6 +2392,42 @@ async function importPaidSpreadsheet(file) {
   state.paidSites = uniqueSites([...state.paidSites, ...paid]);
   saveState();
   render();
+}
+
+function isAdmin() {
+  const role = currentRoleName().toLowerCase();
+  return ["admin", "superadmin", "\u7e3d\u7ba1\u7406\u54e1", "\u7ba1\u7406\u54e1"].includes(role);
+}
+
+function updateAccountUi() {
+  const name = state.currentUser?.username || "";
+  const roleName = currentRoleName() || "\u4f7f\u7528\u8005";
+  els.body.classList.toggle("is-logged-in", Boolean(name));
+  els.body.classList.toggle("is-admin", isAdmin());
+  els.accountLabel.textContent = name ? `\u5df2\u767b\u5165\uff1a${name}\uff08${roleName}\uff09` : "\u672a\u767b\u5165";
+  els.loginBtn.hidden = Boolean(name);
+  els.logoutBtn.hidden = !name;
+  els.saveUserBtn.hidden = !name;
+  els.saveUserBtn.disabled = !name || !state.isDirty;
+  els.saveUserBtn.textContent = state.isDirty ? "\u5132\u5b58\u8b8a\u66f4" : "\u5df2\u5132\u5b58";
+  els.saveUserBtn.classList.toggle("is-dirty", state.isDirty);
+  els.saveUserBtn.classList.toggle("is-saved", Boolean(name) && !state.isDirty);
+  if ((!name || !isAdmin()) && state.editing) {
+    state.editing = false;
+  }
+}
+
+function requireLogin() {
+  if (isLoggedIn()) return true;
+  alert("\u8acb\u5148\u767b\u5165\u5e33\u865f\u3002");
+  openLoginModal();
+  return false;
+}
+
+function requireAdmin() {
+  if (isAdmin()) return true;
+  alert("\u53ea\u6709\u7e3d\u7ba1\u7406\u54e1\u624d\u80fd\u7de8\u8f2f\u6b64\u5340\u584a\u3002");
+  return false;
 }
 
 els.toggleEditBtn.addEventListener("click", () => {
@@ -2302,7 +2492,12 @@ if (els.zoneNameInput) {
   });
 }
 if (els.addPaidBtn) {
-  els.addPaidBtn.addEventListener("click", addPaidSite);
+  els.addPaidBtn.addEventListener("click", () => {
+    addPaidSite().catch((error) => {
+      console.error(error);
+      alert(error.message || "\u4ed8\u8cbb\u9805\u76ee\u65b0\u589e\u5931\u6557\u3002");
+    });
+  });
 }
 if (els.paidImportInput) {
   els.paidImportInput.addEventListener("change", (event) => {
