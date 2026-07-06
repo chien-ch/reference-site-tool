@@ -726,6 +726,26 @@ body:not(.is-admin) .admin-only {
   overflow-wrap: anywhere;
 }
 
+.paid-attachment-preview {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.paid-attachment-preview img {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: block;
+  max-height: 420px;
+  max-width: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.attachment-open-btn {
+  justify-self: start;
+}
+
 .info-modal-backdrop {
   display: flex;
 }

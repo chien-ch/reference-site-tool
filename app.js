@@ -1977,6 +1977,60 @@ function appendPaidAttachmentLink(container, site) {
   container.append(link);
 }
 
+function isImageAttachment(site) {
+  const type = String(site.attachmentType || "").toLowerCase();
+  const name = String(site.attachmentName || site.attachmentUrl || "").toLowerCase();
+  return type.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name);
+}
+
+function getDriveFileId(url) {
+  const value = String(url || "");
+  const fileMatch = value.match(/\/file\/d\/([^/]+)/);
+  if (fileMatch) return fileMatch[1];
+  const idMatch = value.match(/[?&]id=([^&]+)/);
+  return idMatch ? idMatch[1] : "";
+}
+
+function getAttachmentPreviewUrl(site) {
+  if (site.attachmentData) return site.attachmentData;
+  const url = String(site.attachmentUrl || "");
+  const fileId = getDriveFileId(url);
+  if (fileId) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1200`;
+  return url;
+}
+
+function createAttachmentPreview(site) {
+  if (!site.attachmentUrl && !site.attachmentData) return null;
+
+  const wrap = document.createElement("div");
+  wrap.className = "paid-attachment-preview";
+
+  if (isImageAttachment(site)) {
+    const img = document.createElement("img");
+    img.src = getAttachmentPreviewUrl(site);
+    img.alt = site.attachmentName || "\u4ed8\u8cbb\u529f\u80fd\u5716\u7247";
+    img.loading = "lazy";
+    wrap.append(img);
+  } else {
+    const fileLabel = document.createElement("p");
+    fileLabel.className = "info-modal-site";
+    fileLabel.textContent = site.attachmentName ? `\u9644\u4ef6\uff1a${site.attachmentName}` : "\u6b64\u9805\u76ee\u6709\u9644\u4ef6";
+    wrap.append(fileLabel);
+  }
+
+  if (site.attachmentUrl) {
+    const link = document.createElement("a");
+    link.className = "ghost-btn attachment-open-btn";
+    link.href = site.attachmentUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "\u958b\u555f\u9644\u4ef6";
+    wrap.append(link);
+  }
+
+  return wrap;
+}
+
 function createMiniSiteCard(site, options = {}) {
   const card = document.createElement("article");
   card.className = "pending-card";
@@ -2233,6 +2287,7 @@ function openInfoModal(title, site) {
   const quote = document.createElement("p");
   quote.className = "paid-tagline";
   quote.textContent = "\u5be6\u969b\u5831\u50f9\u8acb\u8a62\u554fPM";
+  const attachmentPreview = createAttachmentPreview(site);
   const actions = document.createElement("div");
   actions.className = "login-actions";
   if (site.url) {
@@ -2250,7 +2305,9 @@ function openInfoModal(title, site) {
   close.textContent = "\u95dc\u9589";
   close.addEventListener("click", () => backdrop.remove());
   actions.append(close);
-  modal.append(heading, name, note, quote, actions);
+  modal.append(heading, name, note, quote);
+  if (attachmentPreview) modal.append(attachmentPreview);
+  modal.append(actions);
   backdrop.append(modal);
   backdrop.addEventListener("click", (event) => {
     if (event.target === backdrop) backdrop.remove();
