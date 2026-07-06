@@ -538,7 +538,7 @@ async function apiPost(payload) {
   }
 }
 
-async function apiPostNoCors(payload) {
+async function apiPostNoCors(payload, waitMs = 1200) {
   await new Promise((resolve) => {
     const frameName = `gas_submit_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const frame = document.createElement("iframe");
@@ -565,7 +565,7 @@ async function apiPostNoCors(payload) {
       form.remove();
       frame.remove();
       resolve();
-    }, 1200);
+    }, waitMs);
   });
 }
 
@@ -668,11 +668,25 @@ async function saveOfficialData() {
     { action: "saveSites", sites: state.sites.filter((site) => !site.hiddenByUser).map(siteToCloudRow) },
     { action: "savePending", pending: state.pending.filter((site) => !site.hiddenByUser).map(siteToCloudRow) },
     { action: "saveZones", zones: state.zones },
-    { action: "savePaidSites", paidSites: state.paidSites.map(paidSiteToCloudRow) }
+    {
+      action: "savePaidSites",
+      paidSites: state.paidSites.map((site) => ({
+        ...paidSiteToCloudRow(site),
+        attachmentData: ""
+      }))
+    }
   ];
 
   for (const payload of payloads) {
     await apiPostNoCors(payload);
+  }
+
+  const paidAttachments = state.paidSites
+    .map(paidSiteToCloudRow)
+    .filter((site) => site.attachmentData && !site.attachmentUrl);
+
+  for (const site of paidAttachments) {
+    await apiPostNoCors({ action: "uploadPaidAttachment", site }, 6000);
   }
 }
 
