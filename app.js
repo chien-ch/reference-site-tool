@@ -187,6 +187,13 @@ function ensureUrl(domain) {
   return clean ? `https://${clean}` : "";
 }
 
+function normalizeUrlInput(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed.replace(/^\/+/, "")}`;
+}
+
 function normalizeCategory(raw, parentName = "") {
   if (typeof raw === "string") {
     return { id: slug(`${parentName}-${raw}`), name: raw.trim(), children: [] };
@@ -2313,10 +2320,10 @@ function openZoneItemEditModal(siteId) {
   nameInput.type = "text";
   nameInput.value = site.name || "";
   nameInput.placeholder = "\u7db2\u7ad9\u540d\u7a31";
-  const domainInput = document.createElement("input");
-  domainInput.type = "text";
-  domainInput.value = site.domain || normalizeDomain(site.url || "");
-  domainInput.placeholder = "\u57df\u540d";
+  const urlInput = document.createElement("input");
+  urlInput.type = "text";
+  urlInput.value = site.url || ensureUrl(site.domain || "");
+  urlInput.placeholder = "\u7db2\u5740";
 
   const actions = document.createElement("div");
   actions.className = "login-actions";
@@ -2331,18 +2338,19 @@ function openZoneItemEditModal(siteId) {
   save.textContent = "\u5132\u5b58";
   actions.append(cancel, save);
 
-  modal.append(heading, nameInput, domainInput, actions);
+  modal.append(heading, nameInput, urlInput, actions);
   modal.addEventListener("submit", (event) => {
     event.preventDefault();
     const name = nameInput.value.trim();
-    const domain = normalizeDomain(domainInput.value);
-    if (!name || !domain) {
-      alert("\u8acb\u8f38\u5165\u7db2\u7ad9\u540d\u7a31\u8207\u57df\u540d");
+    const url = normalizeUrlInput(urlInput.value);
+    const domain = normalizeDomain(url);
+    if (!name || !url || !domain) {
+      alert("\u8acb\u8f38\u5165\u7db2\u7ad9\u540d\u7a31\u8207\u7db2\u5740");
       return;
     }
     site.name = name;
     site.domain = domain;
-    site.url = ensureUrl(domain);
+    site.url = url;
     saveState();
     render();
     backdrop.remove();
