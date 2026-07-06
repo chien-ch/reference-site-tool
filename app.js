@@ -2052,11 +2052,29 @@ function openPaidAttachmentUpload(site) {
     alert("\u8acb\u5148\u5132\u5b58\u6b64\u4ed8\u8cbb\u9805\u76ee\uff0c\u518d\u4e0a\u50b3\u9644\u4ef6\u3002");
     return;
   }
-  const url = new URL(GOOGLE_SHEET_API_URL);
-  url.searchParams.set("action", "uploadPaidAttachmentForm");
-  url.searchParams.set("id", site.id);
-  url.searchParams.set("name", `${site.featureName || ""} ${site.name || ""}`.trim());
-  window.open(url.toString(), "_blank", "noopener,noreferrer");
+
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*,.pdf,.doc,.docx";
+  input.addEventListener("change", async () => {
+    let attachment = {};
+    try {
+      attachment = await readPaidAttachmentFromInput(input);
+    } catch (error) {
+      alert(error.message || "\u9644\u4ef6\u8b80\u53d6\u5931\u6557\u3002");
+      return;
+    }
+
+    if (!attachment.attachmentData) return;
+    site.attachmentName = attachment.attachmentName;
+    site.attachmentType = attachment.attachmentType;
+    site.attachmentData = attachment.attachmentData;
+    site.attachmentUrl = "";
+    saveState();
+    render();
+    alert("\u9644\u4ef6\u5df2\u9078\u64c7\uff0c\u8acb\u6309\u53f3\u4e0a\u89d2\u300c\u5132\u5b58\u8b8a\u66f4\u300d\uff0c\u624d\u6703\u4e0a\u50b3\u5230 Google Drive\u3002");
+  });
+  input.click();
 }
 
 function createMiniSiteCard(site, options = {}) {
@@ -2396,7 +2414,7 @@ function openPaidEditModal(siteId) {
   const uploadAttachmentBtn = document.createElement("button");
   uploadAttachmentBtn.className = "ghost-btn";
   uploadAttachmentBtn.type = "button";
-  uploadAttachmentBtn.textContent = "\u958b\u555f Apps Script \u4e0a\u50b3\u9644\u4ef6";
+  uploadAttachmentBtn.textContent = "\u9078\u64c7\u9644\u4ef6";
   uploadAttachmentBtn.addEventListener("click", () => openPaidAttachmentUpload(site));
 
   const actions = document.createElement("div");
