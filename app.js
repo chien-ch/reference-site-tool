@@ -674,25 +674,13 @@ async function saveOfficialData() {
     { action: "saveSites", sites: state.sites.filter((site) => !site.hiddenByUser).map(siteToCloudRow) },
     { action: "savePending", pending: state.pending.filter((site) => !site.hiddenByUser).map(siteToCloudRow) },
     { action: "saveZones", zones: state.zones },
-    {
-      action: "savePaidSites",
-      paidSites: state.paidSites.map((site) => ({
-        ...paidSiteToCloudRow(site),
-        attachmentData: ""
-      }))
-    }
+    { action: "savePaidSites", paidSites: state.paidSites.map(paidSiteToCloudRow) }
   ];
 
   for (const payload of payloads) {
-    await apiPostNoCors(payload);
-  }
-
-  const paidAttachments = state.paidSites
-    .map(paidSiteToCloudRow)
-    .filter((site) => site.attachmentData && !site.attachmentUrl);
-
-  for (const site of paidAttachments) {
-    await apiPostNoCors({ action: "uploadPaidAttachment", site }, 6000);
+    const hasAttachment = payload.action === "savePaidSites"
+      && payload.paidSites?.some((site) => site.attachmentData && !site.attachmentUrl);
+    await apiPostNoCors(payload, hasAttachment ? 8000 : 1200);
   }
 }
 
@@ -2326,13 +2314,6 @@ function renderPaidSites() {
       appendPaidAttachmentLink(item, site);
 
       if (isAdmin()) {
-        const uploadBtn = document.createElement("button");
-        uploadBtn.className = "small-btn";
-        uploadBtn.type = "button";
-        uploadBtn.textContent = "\u4e0a\u50b3\u9644\u4ef6";
-        uploadBtn.addEventListener("click", () => openPaidAttachmentUpload(site));
-        item.append(uploadBtn);
-
         const editBtn = document.createElement("button");
         editBtn.className = "small-btn";
         editBtn.type = "button";
