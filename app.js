@@ -94,6 +94,7 @@ const els = {
   paidNameInput: document.getElementById("paidNameInput"),
   paidDomainInput: document.getElementById("paidDomainInput"),
   paidNoteInput: document.getElementById("paidNoteInput"),
+  paidAttachmentUrlInput: document.getElementById("paidAttachmentUrlInput"),
   paidAttachmentInput: document.getElementById("paidAttachmentInput"),
   addPaidBtn: document.getElementById("addPaidBtn"),
   paidList: document.getElementById("paidList"),
@@ -2045,6 +2046,19 @@ function createAttachmentPreview(site) {
   return wrap;
 }
 
+function openPaidAttachmentUpload(site) {
+  if (!requireAdmin()) return;
+  if (!site?.id) {
+    alert("\u8acb\u5148\u5132\u5b58\u6b64\u4ed8\u8cbb\u9805\u76ee\uff0c\u518d\u4e0a\u50b3\u9644\u4ef6\u3002");
+    return;
+  }
+  const url = new URL(GOOGLE_SHEET_API_URL);
+  url.searchParams.set("action", "uploadPaidAttachmentForm");
+  url.searchParams.set("id", site.id);
+  url.searchParams.set("name", `${site.featureName || ""} ${site.name || ""}`.trim());
+  window.open(url.toString(), "_blank", "noopener,noreferrer");
+}
+
 function createMiniSiteCard(site, options = {}) {
   const card = document.createElement("article");
   card.className = "pending-card";
@@ -2175,6 +2189,7 @@ async function addPaidSite() {
   const name = (els.paidNameInput?.value || "").trim();
   const domain = normalizeDomain(els.paidDomainInput?.value || "");
   const note = (els.paidNoteInput?.value || "").trim();
+  const attachmentUrl = (els.paidAttachmentUrlInput?.value || "").trim();
   if (!featureName || !name) {
     alert("\u8acb\u8f38\u5165\u4ed8\u8cbb\u529f\u80fd\u540d\u7a31\u8207\u53c3\u8003\u7ad9\u540d\u7a31");
     return;
@@ -2193,6 +2208,7 @@ async function addPaidSite() {
     url: domain ? ensureUrl(domain) : "",
     featureName,
     note,
+    attachmentUrl,
     ...attachment,
     addedAt: new Date().toISOString()
   }]);
@@ -2200,6 +2216,7 @@ async function addPaidSite() {
   els.paidNameInput.value = "";
   els.paidDomainInput.value = "";
   els.paidNoteInput.value = "";
+  if (els.paidAttachmentUrlInput) els.paidAttachmentUrlInput.value = "";
   if (els.paidAttachmentInput) els.paidAttachmentInput.value = "";
   saveState();
   render();
@@ -2260,6 +2277,13 @@ function renderPaidSites() {
       appendPaidAttachmentLink(item, site);
 
       if (isAdmin()) {
+        const uploadBtn = document.createElement("button");
+        uploadBtn.className = "small-btn";
+        uploadBtn.type = "button";
+        uploadBtn.textContent = "\u4e0a\u50b3\u9644\u4ef6";
+        uploadBtn.addEventListener("click", () => openPaidAttachmentUpload(site));
+        item.append(uploadBtn);
+
         const editBtn = document.createElement("button");
         editBtn.className = "small-btn";
         editBtn.type = "button";
@@ -2356,6 +2380,10 @@ function openPaidEditModal(siteId) {
   const noteInput = document.createElement("textarea");
   noteInput.value = site.note || "";
   noteInput.placeholder = "\u529f\u80fd\u8aaa\u660e";
+  const attachmentUrlInput = document.createElement("input");
+  attachmentUrlInput.type = "text";
+  attachmentUrlInput.value = site.attachmentUrl || "";
+  attachmentUrlInput.placeholder = "Google Drive \u9644\u4ef6\u9023\u7d50\uff08\u53ef\u9078\uff09";
   const fileInput = document.createElement("input");
   fileInput.type = "file";
   fileInput.accept = "image/*,.pdf,.doc,.docx";
@@ -2365,6 +2393,11 @@ function openPaidEditModal(siteId) {
   currentFile.textContent = site.attachmentUrl
     ? `\u76ee\u524d\u9644\u4ef6\uff1a${site.attachmentName || site.attachmentUrl}`
     : "\u76ee\u524d\u6c92\u6709\u9644\u4ef6\u3002";
+  const uploadAttachmentBtn = document.createElement("button");
+  uploadAttachmentBtn.className = "ghost-btn";
+  uploadAttachmentBtn.type = "button";
+  uploadAttachmentBtn.textContent = "\u958b\u555f Apps Script \u4e0a\u50b3\u9644\u4ef6";
+  uploadAttachmentBtn.addEventListener("click", () => openPaidAttachmentUpload(site));
 
   const actions = document.createElement("div");
   actions.className = "login-actions";
@@ -2379,7 +2412,7 @@ function openPaidEditModal(siteId) {
   save.textContent = "\u5132\u5b58";
   actions.append(cancel, save);
 
-  modal.append(heading, featureInput, nameInput, domainInput, noteInput, fileInput, currentFile, actions);
+  modal.append(heading, featureInput, nameInput, domainInput, noteInput, attachmentUrlInput, fileInput, currentFile, uploadAttachmentBtn, actions);
   modal.addEventListener("submit", async (event) => {
     event.preventDefault();
     const featureName = featureInput.value.trim();
@@ -2400,7 +2433,11 @@ function openPaidEditModal(siteId) {
     site.domain = normalizeDomain(domainInput.value);
     site.url = site.domain ? ensureUrl(site.domain) : "";
     site.note = noteInput.value.trim();
+    site.attachmentUrl = attachmentUrlInput.value.trim();
     Object.assign(site, attachment);
+    if (attachment.attachmentData) {
+      site.attachmentUrl = "";
+    }
     saveState();
     render();
     backdrop.remove();
