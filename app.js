@@ -658,14 +658,22 @@ async function saveUserData() {
   } catch (error) {
     console.error(error);
     alert("儲存失敗，請確認 Apps Script 已重新部署，或稍後再試。");
+    els.saveUserBtn.disabled = false;
     updateAccountUi();
     return;
   }
 
-  setDirty(false);
   if (pendingAttachmentCount) {
     await loadCloudState();
+    const remaining = state.paidSites.filter((site) => site.attachmentData && !site.attachmentUrl).length;
+    if (remaining) {
+      setDirty(true);
+      alert("附件尚未成功寫入 Google Drive。請確認 Apps Script 已執行 authorizeDriveOnce 並重新部署，再按一次儲存變更。");
+      return;
+    }
   }
+  setDirty(false);
+  updateAccountUi();
 }
 
 async function saveOfficialData() {
@@ -680,7 +688,7 @@ async function saveOfficialData() {
   for (const payload of payloads) {
     const hasAttachment = payload.action === "savePaidSites"
       && payload.paidSites?.some((site) => site.attachmentData && !site.attachmentUrl);
-    await apiPostNoCors(payload, hasAttachment ? 8000 : 1200);
+    await apiPostNoCors(payload, hasAttachment ? 20000 : 1200);
   }
 }
 
@@ -1982,17 +1990,50 @@ function fileToDataUrl(file) {
   });
 }
 
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("\u5716\u7247\u8f09\u5165\u5931\u6557\u3002"));
+    };
+    img.src = url;
+  });
+}
+
+async function compressImageToDataUrl(file) {
+  const img = await loadImageFromFile(file);
+  const maxSide = 1400;
+  const sourceWidth = img.naturalWidth || img.width;
+  const sourceHeight = img.naturalHeight || img.height;
+  const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
 async function readPaidAttachmentFromInput(input) {
   const file = input?.files?.[0];
   if (!file) return {};
-  const maxBytes = 5 * 1024 * 1024;
+  const isImage = file.type.startsWith("image/");
+  const maxBytes = isImage ? 10 * 1024 * 1024 : 3 * 1024 * 1024;
   if (file.size > maxBytes) {
-    throw new Error("\u9644\u4ef6\u8acb\u63a7\u5236\u5728 5MB \u4ee5\u5167\uff0cPDF/Word \u82e5\u904e\u5927\u8acb\u5148\u7e2e\u5c0f\u6216\u6539\u653e\u96f2\u7aef\u9023\u7d50\u3002");
+    throw new Error("\u5716\u7247\u8acb\u63a7\u5236\u5728 10MB \u4ee5\u5167\uff0cPDF/Word \u8acb\u63a7\u5236\u5728 3MB \u4ee5\u5167\u3002");
   }
+  const attachmentData = isImage ? await compressImageToDataUrl(file) : await fileToDataUrl(file);
   return {
-    attachmentName: file.name,
-    attachmentType: file.type || "application/octet-stream",
-    attachmentData: await fileToDataUrl(file)
+    attachmentName: isImage ? file.name.replace(/\.[^.]+$/, ".jpg") : file.name,
+    attachmentType: isImage ? "image/jpeg" : (file.type || "application/octet-stream"),
+    attachmentData
   };
 }
 
