@@ -6,6 +6,7 @@ const STORAGE = {
   saved: "reference-saved",
   zones: "reference-zones",
   paidSites: "reference-paid-sites",
+  priceItems: "reference-price-items",
   currentUser: "reference-current-user"
 };
 
@@ -48,6 +49,7 @@ const state = {
   saved: new Set(),
   zones: [],
   paidSites: [],
+  priceItems: [],
   selectedForZone: new Set(),
   selectedCategory: "all",
   search: "",
@@ -90,6 +92,7 @@ const els = {
   batchAddZoneBtn: document.getElementById("batchAddZoneBtn"),
   zoneList: document.getElementById("zoneList"),
   paidImportInput: document.getElementById("paidImportInput"),
+  priceBookBtn: document.getElementById("priceBookBtn"),
   paidFeatureInput: document.getElementById("paidFeatureInput"),
   paidNameInput: document.getElementById("paidNameInput"),
   paidDomainInput: document.getElementById("paidDomainInput"),
@@ -379,6 +382,7 @@ function loadState() {
   state.saved = new Set(readSource(STORAGE.saved, []) || []);
   state.zones = readSource(STORAGE.zones, []) || [];
   state.paidSites = (readSource(STORAGE.paidSites, []) || []).map(normalizePaidSite).filter(Boolean);
+  state.priceItems = (readSource(STORAGE.priceItems, []) || []).map(normalizePriceItem).filter(Boolean);
   state.categories.forEach((cat) => {
     if (cat.children.length) state.openCategories.add(cat.id);
   });
@@ -396,6 +400,7 @@ function saveState() {
   writeJson(STORAGE.saved, Array.from(state.saved));
   writeJson(STORAGE.zones, state.zones);
   writeJson(STORAGE.paidSites, state.paidSites);
+  writeJson(STORAGE.priceItems, state.priceItems);
   if (state.currentUser && !state.suppressDirty) {
     setDirty(true);
   }
@@ -409,7 +414,8 @@ function statePayload() {
     statuses: state.statuses,
     saved: Array.from(state.saved),
     zones: state.zones,
-    paidSites: state.paidSites
+    paidSites: state.paidSites,
+    priceItems: state.priceItems
   };
 }
 
@@ -423,6 +429,7 @@ function applyUserPayload(payload) {
   if (Array.isArray(payload.saved)) state.saved = new Set(payload.saved);
   if (Array.isArray(payload.zones)) state.zones = payload.zones;
   if (Array.isArray(payload.paidSites)) state.paidSites = payload.paidSites.map(normalizePaidSite).filter(Boolean);
+  if (Array.isArray(payload.priceItems)) state.priceItems = payload.priceItems.map(normalizePriceItem).filter(Boolean);
   saveState();
   state.suppressDirty = false;
 }
@@ -682,7 +689,8 @@ async function saveOfficialData() {
     { action: "saveSites", sites: state.sites.filter((site) => !site.hiddenByUser).map(siteToCloudRow) },
     { action: "savePending", pending: state.pending.filter((site) => !site.hiddenByUser).map(siteToCloudRow) },
     { action: "saveZones", zones: state.zones },
-    { action: "savePaidSites", paidSites: state.paidSites.map(paidSiteToCloudRow) }
+    { action: "savePaidSites", paidSites: state.paidSites.map(paidSiteToCloudRow) },
+    { action: "savePriceItems", priceItems: state.priceItems.map(priceItemToCloudRow) }
   ];
 
   for (const payload of payloads) {
@@ -1230,11 +1238,20 @@ function createMiniSiteCard(site, options = {}) {
     button.addEventListener("click", options.onAction);
     card.append(button);
   }
+  (options.extraActions || []).forEach((action) => {
+    if (!action?.text || !action?.onClick) return;
+    const button = document.createElement("button");
+    button.className = action.className || "small-btn";
+    button.type = "button";
+    button.textContent = action.text;
+    button.addEventListener("click", action.onClick);
+    card.append(button);
+  });
   return card;
 }
 
 function addZone() {
-  if (!requireLogin()) return;
+  if (!requireAdmin()) return;
   const name = els.zoneNameInput.value.trim();
   if (!name) return;
   state.zones.push({ id: makeId("zone"), name, items: [] });
@@ -1276,7 +1293,14 @@ function renderZones() {
     title.className = "pending-title zone-title";
     title.textContent = `${zone.name}（${(zone.items || []).length}）`;
     card.append(title);
-    if (isLoggedIn()) {
+    if (isAdmin()) {
+      const editZone = document.createElement("button");
+      editZone.className = "small-btn";
+      editZone.type = "button";
+      editZone.textContent = "\u7de8\u8f2f\u5c08\u5340";
+      editZone.addEventListener("click", () => openZoneEditModal(zone.id));
+      card.append(editZone);
+
       const removeZone = document.createElement("button");
       removeZone.className = "small-btn delete-btn";
       removeZone.type = "button";
@@ -1308,7 +1332,7 @@ function renderZones() {
 }
 
 function addSelectedSitesToZone() {
-  if (!requireLogin()) return;
+  if (!requireAdmin()) return;
   const zoneId = els.batchZoneSelect?.value || "";
   const zone = state.zones.find((item) => item.id === zoneId);
   if (!zone) {
@@ -1562,6 +1586,13 @@ function mergePaidSites(localPaidSites, officialPaidSites) {
   return Array.from(map.values());
 }
 
+function mergePriceItems(localItems, officialItems) {
+  const map = new Map();
+  officialItems.forEach((item) => map.set(item.id || `${item.item}-${item.description}`, item));
+  localItems.forEach((item) => map.set(item.id || `${item.item}-${item.description}`, { ...(map.get(item.id) || {}), ...item }));
+  return Array.from(map.values());
+}
+
 function paidSiteFromSheetRow(row) {
   return normalizePaidSite({
     id: getRowValue(row, ["id"]),
@@ -1578,6 +1609,7 @@ function applyCloudData(data) {
   const cloudCategories = Array.isArray(data?.categories) ? data.categories : [];
   const cloudZones = Array.isArray(data?.zones) ? data.zones : [];
   const cloudPaidSites = Array.isArray(data?.paidSites) ? data.paidSites : [];
+  const cloudPriceItems = Array.isArray(data?.priceItems) ? data.priceItems : [];
 
   const officialSites = uniqueSites(cloudSites.map(siteFromSheetRow).filter(Boolean));
   const officialPending = uniqueSites(cloudPending.map(siteFromSheetRow).filter(Boolean));
@@ -1609,6 +1641,11 @@ function applyCloudData(data) {
   const officialPaidSites = uniqueSites(cloudPaidSites.map(paidSiteFromSheetRow).filter(Boolean));
   if (officialPaidSites.length) {
     state.paidSites = isLoggedIn() ? mergePaidSites(state.paidSites, officialPaidSites) : officialPaidSites;
+  }
+
+  const officialPriceItems = cloudPriceItems.map(normalizePriceItem).filter(Boolean);
+  if (officialPriceItems.length) {
+    state.priceItems = isLoggedIn() ? mergePriceItems(state.priceItems, officialPriceItems) : officialPriceItems;
   }
 
   mergeOfficialSites(officialSites, officialPending);
@@ -1981,6 +2018,24 @@ function normalizePaidSite(raw) {
   };
 }
 
+function normalizePriceItem(raw) {
+  const item = String(raw?.item || raw?.name || raw?.["\u9805\u76ee"] || "").trim();
+  const description = String(raw?.description || raw?.note || raw?.["\u8aaa\u660e"] || "").trim();
+  const quote = String(raw?.quote || raw?.["\u662f\u5426\u5831\u50f9"] || "").trim();
+  const price = String(raw?.price || raw?.["\u8cbb\u7528\uff08\u672a\u7a05\uff09"] || raw?.["\u8cbb\u7528(\u672a\u7a05)"] || raw?.["\u8cbb\u7528"] || "").trim();
+  const remark = String(raw?.remark || raw?.memo || raw?.["\u5099\u8a3b"] || raw?.["\u8aaa\u660e2"] || "").trim();
+  if (!item && !description && !price) return null;
+  return {
+    id: String(raw?.id || makeId("price")),
+    item,
+    description,
+    quote,
+    price,
+    remark,
+    addedAt: raw?.addedAt || new Date().toISOString()
+  };
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -2177,7 +2232,7 @@ function createMiniSiteCard(site, options = {}) {
 }
 
 function addSiteToZone(siteId, zoneId) {
-  if (!requireLogin()) return;
+  if (!requireAdmin()) return;
   if (!zoneId) {
     alert("\u8acb\u5148\u9078\u64c7\u5c08\u5340");
     return;
@@ -2188,6 +2243,117 @@ function addSiteToZone(siteId, zoneId) {
   zone.items.push({ id: makeId("zone-item"), siteId });
   saveState();
   render();
+}
+
+function openZoneEditModal(zoneId) {
+  if (!requireAdmin()) return;
+  const zone = state.zones.find((item) => item.id === zoneId);
+  if (!zone) return;
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop info-modal-backdrop";
+  const modal = document.createElement("form");
+  modal.className = "login-modal paid-edit-modal";
+
+  const heading = document.createElement("h2");
+  heading.textContent = "\u7de8\u8f2f\u5c08\u5340";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.value = zone.name || "";
+  nameInput.placeholder = "\u5c08\u5340\u540d\u7a31";
+
+  const actions = document.createElement("div");
+  actions.className = "login-actions";
+  const cancel = document.createElement("button");
+  cancel.className = "ghost-btn";
+  cancel.type = "button";
+  cancel.textContent = "\u53d6\u6d88";
+  cancel.addEventListener("click", () => backdrop.remove());
+  const save = document.createElement("button");
+  save.className = "primary-btn";
+  save.type = "submit";
+  save.textContent = "\u5132\u5b58";
+  actions.append(cancel, save);
+
+  modal.append(heading, nameInput, actions);
+  modal.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const name = nameInput.value.trim();
+    if (!name) {
+      alert("\u8acb\u8f38\u5165\u5c08\u5340\u540d\u7a31");
+      return;
+    }
+    zone.name = name;
+    saveState();
+    render();
+    backdrop.remove();
+  });
+
+  backdrop.append(modal);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) backdrop.remove();
+  });
+  document.body.append(backdrop);
+  setTimeout(() => nameInput.focus(), 0);
+}
+
+function openZoneItemEditModal(siteId) {
+  if (!requireAdmin()) return;
+  const site = siteById(siteId);
+  if (!site) return;
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop info-modal-backdrop";
+  const modal = document.createElement("form");
+  modal.className = "login-modal paid-edit-modal";
+
+  const heading = document.createElement("h2");
+  heading.textContent = "\u7de8\u8f2f\u5c08\u5340\u9805\u76ee";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.value = site.name || "";
+  nameInput.placeholder = "\u7db2\u7ad9\u540d\u7a31";
+  const domainInput = document.createElement("input");
+  domainInput.type = "text";
+  domainInput.value = site.domain || normalizeDomain(site.url || "");
+  domainInput.placeholder = "\u57df\u540d";
+
+  const actions = document.createElement("div");
+  actions.className = "login-actions";
+  const cancel = document.createElement("button");
+  cancel.className = "ghost-btn";
+  cancel.type = "button";
+  cancel.textContent = "\u53d6\u6d88";
+  cancel.addEventListener("click", () => backdrop.remove());
+  const save = document.createElement("button");
+  save.className = "primary-btn";
+  save.type = "submit";
+  save.textContent = "\u5132\u5b58";
+  actions.append(cancel, save);
+
+  modal.append(heading, nameInput, domainInput, actions);
+  modal.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const name = nameInput.value.trim();
+    const domain = normalizeDomain(domainInput.value);
+    if (!name || !domain) {
+      alert("\u8acb\u8f38\u5165\u7db2\u7ad9\u540d\u7a31\u8207\u57df\u540d");
+      return;
+    }
+    site.name = name;
+    site.domain = domain;
+    site.url = ensureUrl(domain);
+    saveState();
+    render();
+    backdrop.remove();
+  });
+
+  backdrop.append(modal);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) backdrop.remove();
+  });
+  document.body.append(backdrop);
+  setTimeout(() => nameInput.focus(), 0);
 }
 
 function renderZones() {
@@ -2226,14 +2392,23 @@ function renderZones() {
     (zone.items || []).forEach((item) => {
       const site = siteById(item.siteId);
       if (!site) return;
-      const options = isLoggedIn()
+      const options = isAdmin()
         ? {
-            actionText: "\u79fb\u9664",
-            onAction: () => {
-              zone.items = zone.items.filter((entry) => entry.id !== item.id);
-              saveState();
-              render();
-            }
+            extraActions: [
+              {
+                text: "\u7de8\u8f2f",
+                onClick: () => openZoneItemEditModal(site.id)
+              },
+              {
+                text: "\u79fb\u9664",
+                className: "small-btn delete-btn",
+                onClick: () => {
+                  zone.items = zone.items.filter((entry) => entry.id !== item.id);
+                  saveState();
+                  render();
+                }
+              }
+            ]
           }
         : {};
       card.append(createMiniSiteCard(site, options));
@@ -2424,6 +2599,173 @@ function openInfoModal(title, site) {
   document.body.append(backdrop);
 }
 
+function openPriceBookModal() {
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop info-modal-backdrop";
+  const modal = document.createElement("div");
+  modal.className = "login-modal price-modal";
+
+  const head = document.createElement("div");
+  head.className = "price-modal-head";
+  const title = document.createElement("h2");
+  title.textContent = "\u4ed8\u8cbb\u516c\u5b9a\u50f9";
+  head.append(title);
+
+  if (isAdmin()) {
+    const addBtn = document.createElement("button");
+    addBtn.className = "primary-btn";
+    addBtn.type = "button";
+    addBtn.textContent = "\u65b0\u589e\u9805\u76ee";
+    addBtn.addEventListener("click", () => openPriceItemEditModal());
+    head.append(addBtn);
+  }
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "price-table-wrap";
+  const table = document.createElement("table");
+  table.className = "price-table";
+  table.innerHTML = `<thead><tr><th>\u9805\u76ee</th><th>\u8aaa\u660e</th><th>\u662f\u5426\u5831\u50f9</th><th>\u8cbb\u7528\uff08\u672a\u7a05\uff09</th><th>\u5099\u8a3b</th>${isAdmin() ? "<th>\u7ba1\u7406</th>" : ""}</tr></thead>`;
+  const tbody = document.createElement("tbody");
+
+  if (!state.priceItems.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = isAdmin() ? 6 : 5;
+    cell.className = "empty-state";
+    cell.textContent = "\u76ee\u524d\u6c92\u6709\u516c\u5b9a\u50f9\u8cc7\u6599\u3002";
+    row.append(cell);
+    tbody.append(row);
+  } else {
+    state.priceItems.forEach((item) => {
+      const row = document.createElement("tr");
+      [item.item, item.description, item.quote, item.price, item.remark].forEach((value) => {
+        const cell = document.createElement("td");
+        cell.textContent = value || "";
+        row.append(cell);
+      });
+      if (isAdmin()) {
+        const cell = document.createElement("td");
+        const edit = document.createElement("button");
+        edit.className = "small-btn";
+        edit.type = "button";
+        edit.textContent = "\u7de8\u8f2f";
+        edit.addEventListener("click", () => openPriceItemEditModal(item.id));
+        const del = document.createElement("button");
+        del.className = "small-btn delete-btn";
+        del.type = "button";
+        del.textContent = "\u522a\u9664";
+        del.addEventListener("click", () => {
+          if (!confirm(`\u78ba\u5b9a\u522a\u9664\u300c${item.item || item.description}\u300d\uff1f`)) return;
+          state.priceItems = state.priceItems.filter((entry) => entry.id !== item.id);
+          saveState();
+          backdrop.remove();
+          openPriceBookModal();
+        });
+        cell.append(edit, del);
+        row.append(cell);
+      }
+      tbody.append(row);
+    });
+  }
+
+  table.append(tbody);
+  tableWrap.append(table);
+
+  const actions = document.createElement("div");
+  actions.className = "login-actions";
+  const close = document.createElement("button");
+  close.className = "ghost-btn";
+  close.type = "button";
+  close.textContent = "\u95dc\u9589";
+  close.addEventListener("click", () => backdrop.remove());
+  actions.append(close);
+
+  modal.append(head, tableWrap, actions);
+  backdrop.append(modal);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) backdrop.remove();
+  });
+  document.body.append(backdrop);
+}
+
+function openPriceItemEditModal(itemId) {
+  if (!requireAdmin()) return;
+  const item = itemId ? state.priceItems.find((entry) => entry.id === itemId) : null;
+  const draft = item || { id: makeId("price"), item: "", description: "", quote: "", price: "", remark: "", addedAt: new Date().toISOString() };
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop info-modal-backdrop";
+  const modal = document.createElement("form");
+  modal.className = "login-modal paid-edit-modal";
+
+  const heading = document.createElement("h2");
+  heading.textContent = item ? "\u7de8\u8f2f\u516c\u5b9a\u50f9" : "\u65b0\u589e\u516c\u5b9a\u50f9";
+  const itemInput = document.createElement("input");
+  itemInput.type = "text";
+  itemInput.placeholder = "\u9805\u76ee";
+  itemInput.value = draft.item || "";
+  const descInput = document.createElement("textarea");
+  descInput.placeholder = "\u8aaa\u660e";
+  descInput.value = draft.description || "";
+  const quoteInput = document.createElement("input");
+  quoteInput.type = "text";
+  quoteInput.placeholder = "\u662f\u5426\u5831\u50f9";
+  quoteInput.value = draft.quote || "";
+  const priceInput = document.createElement("input");
+  priceInput.type = "text";
+  priceInput.placeholder = "\u8cbb\u7528\uff08\u672a\u7a05\uff09";
+  priceInput.value = draft.price || "";
+  const remarkInput = document.createElement("textarea");
+  remarkInput.placeholder = "\u5099\u8a3b";
+  remarkInput.value = draft.remark || "";
+
+  const actions = document.createElement("div");
+  actions.className = "login-actions";
+  const cancel = document.createElement("button");
+  cancel.className = "ghost-btn";
+  cancel.type = "button";
+  cancel.textContent = "\u53d6\u6d88";
+  cancel.addEventListener("click", () => backdrop.remove());
+  const save = document.createElement("button");
+  save.className = "primary-btn";
+  save.type = "submit";
+  save.textContent = "\u5132\u5b58";
+  actions.append(cancel, save);
+
+  modal.append(heading, itemInput, descInput, quoteInput, priceInput, remarkInput, actions);
+  modal.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const next = {
+      id: draft.id,
+      item: itemInput.value.trim(),
+      description: descInput.value.trim(),
+      quote: quoteInput.value.trim(),
+      price: priceInput.value.trim(),
+      remark: remarkInput.value.trim(),
+      addedAt: draft.addedAt || new Date().toISOString()
+    };
+    if (!next.item && !next.description && !next.price) {
+      alert("\u8acb\u81f3\u5c11\u8f38\u5165\u9805\u76ee\u3001\u8aaa\u660e\u6216\u8cbb\u7528\u3002");
+      return;
+    }
+    if (item) {
+      Object.assign(item, next);
+    } else {
+      state.priceItems.push(next);
+    }
+    saveState();
+    render();
+    backdrop.remove();
+    openPriceBookModal();
+  });
+
+  backdrop.append(modal);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) backdrop.remove();
+  });
+  document.body.append(backdrop);
+}
+
 function openPaidEditModal(siteId) {
   if (!requireAdmin()) return;
   const site = state.paidSites.find((item) => item.id === siteId);
@@ -2544,6 +2886,18 @@ function paidSiteToCloudRow(site) {
     attachmentName: site.attachmentName || "",
     attachmentType: site.attachmentType || "",
     attachmentData: site.attachmentData || ""
+  };
+}
+
+function priceItemToCloudRow(item) {
+  return {
+    id: item.id || makeId("price"),
+    item: item.item || "",
+    description: item.description || "",
+    quote: item.quote || "",
+    price: item.price || "",
+    remark: item.remark || "",
+    addedAt: item.addedAt || ""
   };
 }
 
@@ -2688,6 +3042,9 @@ if (els.paidImportInput) {
     }
     event.target.value = "";
   });
+}
+if (els.priceBookBtn) {
+  els.priceBookBtn.addEventListener("click", openPriceBookModal);
 }
 els.clearPendingBtn.addEventListener("click", () => {
   if (!requireLogin()) return;
