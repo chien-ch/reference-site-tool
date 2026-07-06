@@ -94,7 +94,6 @@ const els = {
   paidNameInput: document.getElementById("paidNameInput"),
   paidDomainInput: document.getElementById("paidDomainInput"),
   paidNoteInput: document.getElementById("paidNoteInput"),
-  paidAttachmentUrlInput: document.getElementById("paidAttachmentUrlInput"),
   paidAttachmentInput: document.getElementById("paidAttachmentInput"),
   addPaidBtn: document.getElementById("addPaidBtn"),
   paidList: document.getElementById("paidList"),
@@ -642,8 +641,11 @@ function logout() {
 
 async function saveUserData() {
   if (!state.currentUser) return;
+  const pendingAttachmentCount = isAdmin()
+    ? state.paidSites.filter((site) => site.attachmentData && !site.attachmentUrl).length
+    : 0;
   els.saveUserBtn.disabled = true;
-  els.saveUserBtn.textContent = isAdmin() ? "同步官方資料中..." : "儲存中...";
+  els.saveUserBtn.textContent = pendingAttachmentCount ? "上傳附件中..." : (isAdmin() ? "同步官方資料中..." : "儲存中...");
   try {
     await apiPostNoCors({
       action: "saveUserData",
@@ -661,6 +663,9 @@ async function saveUserData() {
   }
 
   setDirty(false);
+  if (pendingAttachmentCount) {
+    await loadCloudState();
+  }
 }
 
 async function saveOfficialData() {
@@ -1532,6 +1537,35 @@ function mergeZones(localZones, officialZones) {
   return Array.from(map.values());
 }
 
+function mergePaidSites(localPaidSites, officialPaidSites) {
+  const map = new Map();
+  const keyFor = (site, index) => site.domain || site.url || site.id || `${site.name || "paid"}-${index}`;
+
+  officialPaidSites.forEach((site, index) => {
+    map.set(keyFor(site, index), site);
+  });
+
+  localPaidSites.forEach((site, index) => {
+    const key = keyFor(site, index);
+    const official = map.get(key);
+    if (!official) {
+      map.set(key, site);
+      return;
+    }
+
+    map.set(key, {
+      ...official,
+      ...site,
+      attachmentUrl: official.attachmentUrl || site.attachmentUrl || "",
+      attachmentName: official.attachmentName || site.attachmentName || "",
+      attachmentType: official.attachmentType || site.attachmentType || "",
+      attachmentData: official.attachmentUrl ? "" : (site.attachmentData || "")
+    });
+  });
+
+  return Array.from(map.values());
+}
+
 function paidSiteFromSheetRow(row) {
   return normalizePaidSite({
     id: getRowValue(row, ["id"]),
@@ -1578,7 +1612,7 @@ function applyCloudData(data) {
 
   const officialPaidSites = uniqueSites(cloudPaidSites.map(paidSiteFromSheetRow).filter(Boolean));
   if (officialPaidSites.length) {
-    state.paidSites = isLoggedIn() ? uniqueSites([...officialPaidSites, ...state.paidSites]) : officialPaidSites;
+    state.paidSites = isLoggedIn() ? mergePaidSites(state.paidSites, officialPaidSites) : officialPaidSites;
   }
 
   mergeOfficialSites(officialSites, officialPending);
@@ -2072,7 +2106,7 @@ function openPaidAttachmentUpload(site) {
     site.attachmentUrl = "";
     saveState();
     render();
-    alert("\u9644\u4ef6\u5df2\u9078\u64c7\uff0c\u8acb\u6309\u53f3\u4e0a\u89d2\u300c\u5132\u5b58\u8b8a\u66f4\u300d\uff0c\u624d\u6703\u4e0a\u50b3\u5230 Google Drive\u3002");
+    alert("\u9644\u4ef6\u5df2\u9078\u64c7\uff0c\u8acb\u6309\u53f3\u4e0a\u89d2\u300c\u5132\u5b58\u8b8a\u66f4\u300d\u4e0a\u50b3\u5230 Google Drive\u3002");
   });
   input.click();
 }
@@ -2207,7 +2241,6 @@ async function addPaidSite() {
   const name = (els.paidNameInput?.value || "").trim();
   const domain = normalizeDomain(els.paidDomainInput?.value || "");
   const note = (els.paidNoteInput?.value || "").trim();
-  const attachmentUrl = (els.paidAttachmentUrlInput?.value || "").trim();
   if (!featureName || !name) {
     alert("\u8acb\u8f38\u5165\u4ed8\u8cbb\u529f\u80fd\u540d\u7a31\u8207\u53c3\u8003\u7ad9\u540d\u7a31");
     return;
@@ -2226,7 +2259,6 @@ async function addPaidSite() {
     url: domain ? ensureUrl(domain) : "",
     featureName,
     note,
-    attachmentUrl,
     ...attachment,
     addedAt: new Date().toISOString()
   }]);
@@ -2234,7 +2266,6 @@ async function addPaidSite() {
   els.paidNameInput.value = "";
   els.paidDomainInput.value = "";
   els.paidNoteInput.value = "";
-  if (els.paidAttachmentUrlInput) els.paidAttachmentUrlInput.value = "";
   if (els.paidAttachmentInput) els.paidAttachmentInput.value = "";
   saveState();
   render();
@@ -2398,10 +2429,6 @@ function openPaidEditModal(siteId) {
   const noteInput = document.createElement("textarea");
   noteInput.value = site.note || "";
   noteInput.placeholder = "\u529f\u80fd\u8aaa\u660e";
-  const attachmentUrlInput = document.createElement("input");
-  attachmentUrlInput.type = "text";
-  attachmentUrlInput.value = site.attachmentUrl || "";
-  attachmentUrlInput.placeholder = "Google Drive \u9644\u4ef6\u9023\u7d50\uff08\u53ef\u9078\uff09";
   const fileInput = document.createElement("input");
   fileInput.type = "file";
   fileInput.accept = "image/*,.pdf,.doc,.docx";
@@ -2411,11 +2438,12 @@ function openPaidEditModal(siteId) {
   currentFile.textContent = site.attachmentUrl
     ? `\u76ee\u524d\u9644\u4ef6\uff1a${site.attachmentName || site.attachmentUrl}`
     : "\u76ee\u524d\u6c92\u6709\u9644\u4ef6\u3002";
-  const uploadAttachmentBtn = document.createElement("button");
-  uploadAttachmentBtn.className = "ghost-btn";
-  uploadAttachmentBtn.type = "button";
-  uploadAttachmentBtn.textContent = "\u9078\u64c7\u9644\u4ef6";
-  uploadAttachmentBtn.addEventListener("click", () => openPaidAttachmentUpload(site));
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) {
+      currentFile.textContent = `\u5df2\u9078\u64c7\uff1a${file.name}\uff0c\u8acb\u5148\u6309\u300c\u5132\u5b58\u300d\uff0c\u518d\u6309\u53f3\u4e0a\u89d2\u300c\u5132\u5b58\u8b8a\u66f4\u300d\u4e0a\u50b3\u3002`;
+    }
+  });
 
   const actions = document.createElement("div");
   actions.className = "login-actions";
@@ -2430,7 +2458,7 @@ function openPaidEditModal(siteId) {
   save.textContent = "\u5132\u5b58";
   actions.append(cancel, save);
 
-  modal.append(heading, featureInput, nameInput, domainInput, noteInput, attachmentUrlInput, fileInput, currentFile, uploadAttachmentBtn, actions);
+  modal.append(heading, featureInput, nameInput, domainInput, noteInput, fileInput, currentFile, actions);
   modal.addEventListener("submit", async (event) => {
     event.preventDefault();
     const featureName = featureInput.value.trim();
@@ -2451,7 +2479,6 @@ function openPaidEditModal(siteId) {
     site.domain = normalizeDomain(domainInput.value);
     site.url = site.domain ? ensureUrl(site.domain) : "";
     site.note = noteInput.value.trim();
-    site.attachmentUrl = attachmentUrlInput.value.trim();
     Object.assign(site, attachment);
     if (attachment.attachmentData) {
       site.attachmentUrl = "";
@@ -2459,6 +2486,9 @@ function openPaidEditModal(siteId) {
     saveState();
     render();
     backdrop.remove();
+    if (attachment.attachmentData) {
+      alert("\u9644\u4ef6\u5df2\u5148\u66ab\u5b58\uff0c\u8acb\u6309\u53f3\u4e0a\u89d2\u300c\u5132\u5b58\u8b8a\u66f4\u300d\uff0c\u624d\u6703\u4e0a\u50b3\u5230 Google Drive\u3002");
+    }
   });
 
   backdrop.append(modal);
