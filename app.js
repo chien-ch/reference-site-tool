@@ -2235,6 +2235,20 @@ function createMiniSiteCard(site, options = {}) {
     button.addEventListener("click", options.onAction);
     card.append(button);
   }
+
+  if (Array.isArray(options.extraActions) && options.extraActions.length) {
+    const actionWrap = document.createElement("div");
+    actionWrap.className = "mini-card-actions";
+    options.extraActions.forEach((action) => {
+      const button = document.createElement("button");
+      button.className = action.className || "small-btn";
+      button.type = "button";
+      button.textContent = action.text || "";
+      button.addEventListener("click", action.onClick);
+      actionWrap.append(button);
+    });
+    card.append(actionWrap);
+  }
   return card;
 }
 
@@ -2384,7 +2398,7 @@ function renderZones() {
     title.textContent = `${zone.name}\uff08${(zone.items || []).length}\uff09`;
     card.append(title);
 
-    if (isLoggedIn()) {
+    if (isAdmin()) {
       const removeZone = document.createElement("button");
       removeZone.className = "small-btn delete-btn";
       removeZone.type = "button";

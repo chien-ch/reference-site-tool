@@ -637,6 +637,16 @@ body:not(.is-admin) .admin-only {
   padding: 14px;
 }
 
+.mini-card-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.mini-card-actions .small-btn {
+  width: 100%;
+}
+
 .pending-title {
   color: var(--ink);
   font-size: 15px;
