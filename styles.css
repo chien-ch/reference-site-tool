@@ -176,12 +176,12 @@ button,
 
 .app-shell {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr) minmax(300px, 340px);
   min-height: calc(100vh - 60px);
 }
 
 body:not(.is-logged-in) .app-shell {
-  grid-template-columns: 340px minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr) minmax(300px, 340px);
 }
 
 body:not(.is-logged-in) .login-only,
@@ -344,6 +344,7 @@ body:not(.is-admin) .admin-only {
 
 .content {
   padding: 44px 48px 80px;
+  min-width: 0;
 }
 
 .hero {
@@ -384,8 +385,13 @@ body:not(.is-admin) .admin-only {
   border: 0;
   color: var(--text);
   font-size: 17px;
+  min-width: 0;
   outline: 0;
   width: 100%;
+}
+
+.mobile-quick-links {
+  display: none;
 }
 
 .result-panel,
@@ -577,6 +583,7 @@ body:not(.is-admin) .admin-only {
   border-left: 1px solid var(--line);
   grid-column: 3;
   height: calc(100vh - 60px);
+  min-width: 0;
   overflow: auto;
   padding: 24px 18px 60px;
   position: sticky;
@@ -585,7 +592,10 @@ body:not(.is-admin) .admin-only {
 
 .utility-card {
   margin-bottom: 18px;
+  min-width: 0;
+  overflow: hidden;
   padding: 22px;
+  scroll-margin-top: 76px;
 }
 
 .utility-card p {
@@ -614,8 +624,16 @@ body:not(.is-admin) .admin-only {
   padding: 10px 16px;
 }
 
-.ghost-btn.full {
-  margin-left: 8px;
+.ghost-btn.full,
+.primary-btn.full {
+  margin-left: 0;
+  width: 100%;
+}
+
+#priceBookBtn {
+  margin-bottom: 10px;
+  text-align: center;
+  white-space: normal;
 }
 
 .muted {
@@ -634,6 +652,7 @@ body:not(.is-admin) .admin-only {
   border-radius: 12px;
   display: grid;
   gap: 10px;
+  min-width: 0;
   padding: 14px;
 }
 
@@ -667,6 +686,9 @@ body:not(.is-admin) .admin-only {
   color: #6e84aa;
   font-family: Consolas, monospace;
   font-size: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .pending-actions {
@@ -679,6 +701,7 @@ body:not(.is-admin) .admin-only {
   display: grid;
   gap: 8px;
   margin-top: 14px;
+  min-width: 0;
 }
 
 .zone-create input,
@@ -875,6 +898,22 @@ body:not(.is-admin) .admin-only {
   }
 }
 
+@media (max-width: 1500px) and (min-width: 1281px) {
+  .app-shell,
+  body:not(.is-logged-in) .app-shell {
+    grid-template-columns: 300px minmax(0, 1fr) 320px;
+  }
+
+  .content {
+    padding: 40px 36px 72px;
+  }
+
+  .site-list {
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+}
+
 @media (max-width: 1080px) {
   .app-shell {
     grid-template-columns: 280px minmax(0, 1fr);
@@ -896,7 +935,12 @@ body:not(.is-admin) .admin-only {
 
   .topbar {
     height: 56px;
+    overflow-x: auto;
     padding: 0 12px;
+  }
+
+  .topbar::-webkit-scrollbar {
+    display: none;
   }
 
   .mobile-menu-btn {
@@ -920,11 +964,16 @@ body:not(.is-admin) .admin-only {
 
   .brand-title {
     font-size: 16px;
+    white-space: nowrap;
   }
 
   .brand-subtitle {
     font-size: 10px;
     letter-spacing: 2px;
+  }
+
+  .topbar > div:nth-of-type(1) {
+    min-width: 92px;
   }
 
   .topbar .ghost-btn {
@@ -934,6 +983,7 @@ body:not(.is-admin) .admin-only {
   }
 
   .account-bar {
+    flex: 0 0 auto;
     gap: 5px;
   }
 
@@ -994,6 +1044,18 @@ body:not(.is-admin) .admin-only {
 
   .content {
     padding: 30px 16px;
+  }
+
+  .mobile-quick-links {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 1fr 1fr;
+    margin: -22px 0 22px;
+  }
+
+  .mobile-quick-links .ghost-btn {
+    min-height: 40px;
+    width: 100%;
   }
 
   .site-card {

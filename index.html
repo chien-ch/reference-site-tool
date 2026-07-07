@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>&#26696;&#20363;&#21161;&#25163; Directory Pro</title>
-  <link rel="stylesheet" href="styles.css?v=20260706-1">
+  <link rel="stylesheet" href="styles.css?v=20260707-1">
   <style>
     body:not(.is-logged-in) .utility-card:not(.login-only):not(.admin-only) { display: block !important; }
     body:not(.is-logged-in) .manage-only { display: none !important; }
@@ -75,6 +75,11 @@
         </label>
       </section>
 
+      <div class="mobile-quick-links">
+        <button class="ghost-btn" id="mobileZoneJumpBtn" type="button">&#23560;&#21312;</button>
+        <button class="ghost-btn" id="mobilePaidJumpBtn" type="button">&#20184;&#36027;&#23560;&#21312;</button>
+      </div>
+
       <section class="result-panel">
         <div class="panel-head">
           <div>
@@ -115,7 +120,7 @@
         <div class="pending-list" id="favoriteList"></div>
       </section>
 
-      <section class="utility-card">
+      <section class="utility-card" id="zonePanel">
         <div class="utility-head">
           <div>
             <p class="kicker">WORKSPACE</p>
@@ -133,14 +138,14 @@
         <div class="pending-list" id="zoneList"></div>
       </section>
 
-      <section class="utility-card">
+      <section class="utility-card" id="paidPanel">
         <div class="utility-head">
           <div>
             <p class="kicker">PAID TOOLS</p>
             <h2>&#20184;&#36027;&#23560;&#21312;</h2>
           </div>
         </div>
-        <button class="ghost-btn full" id="priceBookBtn" type="button">&#20184;&#36027;&#20844;&#23450;&#20729;</button>
+        <button class="ghost-btn full" id="priceBookBtn" type="button">&#27169;&#32068;&#21151;&#33021;&#38656;&#21152;&#20729;-&#26989;&#21209;&#29256;</button>
         <label class="primary-btn full admin-only">
           &#21295;&#20837;&#20184;&#36027;&#21443;&#32771;&#31449;
           <input id="paidImportInput" type="file" accept=".xlsx,.xls,.csv,.tsv" hidden>
@@ -169,7 +174,7 @@
     </aside>
   </div>
 
-  <script src="reference-data.js?v=20260706-15"></script>
-  <script src="app.js?v=20260706-15"></script>
+  <script src="reference-data.js?v=20260707-1"></script>
+  <script src="app.js?v=20260707-1"></script>
 </body>
 </html>

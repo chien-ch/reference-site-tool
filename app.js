@@ -65,6 +65,8 @@ const els = {
   body: document.body,
   mobileCategoryBtn: document.getElementById("mobileCategoryBtn"),
   mobileSidebarBackdrop: document.getElementById("mobileSidebarBackdrop"),
+  mobileZoneJumpBtn: document.getElementById("mobileZoneJumpBtn"),
+  mobilePaidJumpBtn: document.getElementById("mobilePaidJumpBtn"),
   categoryList: document.getElementById("categoryList"),
   toggleEditBtn: document.getElementById("toggleEditBtn"),
   addCategoryBtn: document.getElementById("addCategoryBtn"),
@@ -84,6 +86,8 @@ const els = {
   clearPendingBtn: document.getElementById("clearPendingBtn"),
   favoritePanelBtn: document.getElementById("favoritePanelBtn"),
   favoritePanel: document.getElementById("favoritePanel"),
+  zonePanel: document.getElementById("zonePanel"),
+  paidPanel: document.getElementById("paidPanel"),
   favoriteCount: document.getElementById("favoriteCount"),
   favoriteList: document.getElementById("favoriteList"),
   zoneNameInput: document.getElementById("zoneNameInput"),
@@ -380,7 +384,7 @@ function loadState() {
   state.categories = normalizeCategories(readSource(STORAGE.categories, []));
   state.sites = uniqueSites(((shouldUseSeedData ? seedSites : readSource(STORAGE.sites, [])) || []).map(normalizeSite).filter(Boolean));
   state.pending = uniqueSites((readSource(STORAGE.pending, []) || []).map(normalizeSite).filter(Boolean));
-  state.statuses = readSource(STORAGE.statuses, {}) || {};
+  state.statuses = {};
   Object.keys(state.statuses).forEach((siteId) => {
     if (state.statuses[siteId] === "manual") {
       delete state.statuses[siteId];
@@ -432,7 +436,7 @@ function applyUserPayload(payload) {
   if (Array.isArray(payload.categories)) state.categories = normalizeCategories(payload.categories);
   if (Array.isArray(payload.sites)) state.sites = uniqueSites(payload.sites.map(normalizeSite).filter(Boolean));
   if (Array.isArray(payload.pending)) state.pending = uniqueSites(payload.pending.map(normalizeSite).filter(Boolean));
-  if (payload.statuses && typeof payload.statuses === "object") state.statuses = payload.statuses;
+  state.statuses = {};
   if (Array.isArray(payload.saved)) state.saved = new Set(payload.saved);
   if (Array.isArray(payload.zones)) state.zones = payload.zones;
   if (Array.isArray(payload.paidSites)) state.paidSites = payload.paidSites.map(normalizePaidSite).filter(Boolean);
@@ -720,6 +724,16 @@ function openMobileSidebar() {
 
 function closeMobileSidebar() {
   els.body.classList.remove("mobile-sidebar-open");
+}
+
+function toggleMobileSidebar() {
+  els.body.classList.toggle("mobile-sidebar-open");
+}
+
+function scrollToUtilityPanel(panel) {
+  if (!panel) return;
+  closeMobileSidebar();
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function createCategoryButton(cat, isChild = false) {
@@ -1665,12 +1679,6 @@ function applyCloudData(data) {
   }
 
   mergeOfficialSites(officialSites, officialPending);
-
-  Object.entries(nextStatuses).forEach(([id, status]) => {
-    if (!state.statuses[id] || state.statuses[id] === "unknown") {
-      state.statuses[id] = status;
-    }
-  });
 
   nextSaved.forEach((id) => state.saved.add(id));
 }
@@ -2639,7 +2647,7 @@ function openPriceBookModal() {
   const head = document.createElement("div");
   head.className = "price-modal-head";
   const title = document.createElement("h2");
-  title.textContent = "\u4ed8\u8cbb\u516c\u5b9a\u50f9";
+  title.textContent = "\u6a21\u7d44\u529f\u80fd\u9700\u52a0\u50f9-\u696d\u52d9\u7248";
   head.append(title);
 
   if (isAdmin()) {
@@ -2999,10 +3007,16 @@ els.toggleEditBtn.addEventListener("click", () => {
   renderCategories();
 });
 if (els.mobileCategoryBtn) {
-  els.mobileCategoryBtn.addEventListener("click", openMobileSidebar);
+  els.mobileCategoryBtn.addEventListener("click", toggleMobileSidebar);
 }
 if (els.mobileSidebarBackdrop) {
   els.mobileSidebarBackdrop.addEventListener("click", closeMobileSidebar);
+}
+if (els.mobileZoneJumpBtn) {
+  els.mobileZoneJumpBtn.addEventListener("click", () => scrollToUtilityPanel(els.zonePanel));
+}
+if (els.mobilePaidJumpBtn) {
+  els.mobilePaidJumpBtn.addEventListener("click", () => scrollToUtilityPanel(els.paidPanel));
 }
 els.addCategoryBtn.addEventListener("click", addCategory);
 els.addChildBtn.addEventListener("click", addChildCategory);
