@@ -1322,14 +1322,23 @@ function renderZones() {
     (zone.items || []).forEach((item) => {
       const site = siteById(item.siteId);
       if (!site) return;
-      const options = isLoggedIn()
+      const options = isAdmin()
         ? {
-            actionText: "移除",
-            onAction: () => {
-              zone.items = zone.items.filter((entry) => entry.id !== item.id);
-              saveState();
-              render();
-            }
+            extraActions: [
+              {
+                text: "編輯",
+                onClick: () => openZoneItemEditModal(site.id)
+              },
+              {
+                text: "移除",
+                className: "small-btn delete-btn",
+                onClick: () => {
+                  zone.items = zone.items.filter((entry) => entry.id !== item.id);
+                  saveState();
+                  render();
+                }
+              }
+            ]
           }
         : {};
       card.append(createMiniSiteCard(site, options));
