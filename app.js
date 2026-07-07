@@ -1200,7 +1200,7 @@ function classifyPending(id, categoryId) {
   site.categoryOverridden = true;
   site.hiddenByUser = false;
   state.pending = state.pending.filter((item) => item.id !== id);
-  state.sites = uniqueSites([...state.sites, site]);
+  state.sites = uniqueSites([site, ...state.sites]);
   saveState();
   render();
 }
@@ -1802,7 +1802,7 @@ async function importSpreadsheet(file) {
   const incoming = rowsToSites(rows);
   const existingDomains = new Set([...state.sites, ...state.pending].map((site) => site.domain));
   const fresh = incoming.filter((site) => !existingDomains.has(site.domain));
-  state.pending = uniqueSites([...state.pending, ...fresh]);
+  state.pending = uniqueSites([...fresh, ...state.pending]);
   saveState();
 
   const duplicateCount = incoming.length - fresh.length;
