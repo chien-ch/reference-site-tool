@@ -1046,20 +1046,9 @@ function createSiteCard(site) {
   zoneBtn.textContent = "\u52a0\u5165\u5c08\u5340";
   zoneBtn.addEventListener("click", () => addSiteToZone(site.id, zoneSelect.value));
 
-  const batchCheck = document.createElement("label");
-  batchCheck.className = "site-check";
-  const batchInput = document.createElement("input");
-  batchInput.type = "checkbox";
-  batchInput.checked = state.selectedForZone.has(site.id);
-  batchInput.addEventListener("change", () => {
-    if (batchInput.checked) state.selectedForZone.add(site.id);
-    else state.selectedForZone.delete(site.id);
-  });
-  batchCheck.append(batchInput, document.createTextNode("\u52fe\u9078"));
-
   card.append(link, checkBtn);
   if (isLoggedIn()) {
-    card.append(batchCheck, favoriteBtn, deleteBtn, select, zoneSelect, zoneBtn);
+    card.append(favoriteBtn, deleteBtn, select, zoneSelect, zoneBtn);
   }
   return card;
 }
@@ -2999,6 +2988,221 @@ function requireAdmin() {
   if (isAdmin()) return true;
   alert("\u53ea\u6709\u7e3d\u7ba1\u7406\u54e1\u624d\u80fd\u7de8\u8f2f\u6b64\u5340\u584a\u3002");
   return false;
+}
+
+function zoneItemSite(item) {
+  const source = siteById(item.siteId) || {};
+  const url = item.url || source.url || ensureUrl(item.domain || source.domain || "");
+  return {
+    ...source,
+    id: item.id || source.id,
+    siteId: item.siteId,
+    name: item.name || source.name || "",
+    domain: item.domain || normalizeDomain(url || source.domain || ""),
+    url
+  };
+}
+
+function addSiteToZone(siteId, zoneId) {
+  if (!requireAdmin()) return;
+  if (!zoneId) {
+    alert("\u8acb\u5148\u9078\u64c7\u5c08\u5340");
+    return;
+  }
+  const zone = state.zones.find((item) => item.id === zoneId);
+  const site = siteById(siteId);
+  if (!zone || !site) return;
+  zone.items = zone.items || [];
+  zone.items.push({
+    id: makeId("zone-item"),
+    siteId,
+    name: site.name || "",
+    domain: site.domain || normalizeDomain(site.url || ""),
+    url: site.url || ensureUrl(site.domain || "")
+  });
+  saveState();
+  render();
+}
+
+function renderZones() {
+  if (!els.zoneList) return;
+  els.zoneList.innerHTML = "";
+  if (!state.zones.length) {
+    els.zoneList.innerHTML = '<div class="empty-state">\u76ee\u524d\u6c92\u6709\u5c08\u5340\u3002</div>';
+    return;
+  }
+
+  state.zones.forEach((zone) => {
+    const card = document.createElement("article");
+    card.className = "pending-card zone-summary-card";
+    const title = document.createElement("button");
+    title.className = "zone-title zone-title-button";
+    title.type = "button";
+    title.textContent = `${zone.name}\uff08${(zone.items || []).length}\uff09`;
+    title.addEventListener("click", () => openZoneItemsModal(zone.id));
+    card.append(title);
+
+    const openBtn = document.createElement("button");
+    openBtn.className = "small-btn";
+    openBtn.type = "button";
+    openBtn.textContent = "\u67e5\u770b";
+    openBtn.addEventListener("click", () => openZoneItemsModal(zone.id));
+    card.append(openBtn);
+
+    if (isAdmin()) {
+      const editZone = document.createElement("button");
+      editZone.className = "small-btn";
+      editZone.type = "button";
+      editZone.textContent = "\u7de8\u8f2f\u5c08\u5340";
+      editZone.addEventListener("click", () => openZoneEditModal(zone.id));
+
+      const removeZone = document.createElement("button");
+      removeZone.className = "small-btn delete-btn";
+      removeZone.type = "button";
+      removeZone.textContent = "\u522a\u9664\u5c08\u5340";
+      removeZone.addEventListener("click", () => {
+        state.zones = state.zones.filter((item) => item.id !== zone.id);
+        saveState();
+        render();
+      });
+      card.append(editZone, removeZone);
+    }
+
+    els.zoneList.append(card);
+  });
+}
+
+function openZoneItemsModal(zoneId) {
+  const zone = state.zones.find((item) => item.id === zoneId);
+  if (!zone) return;
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop info-modal-backdrop";
+  const modal = document.createElement("div");
+  modal.className = "login-modal zone-modal";
+
+  const head = document.createElement("div");
+  head.className = "price-modal-head";
+  const title = document.createElement("h2");
+  title.textContent = `${zone.name}\uff08${(zone.items || []).length}\uff09`;
+  head.append(title);
+
+  const list = document.createElement("div");
+  list.className = "pending-list zone-modal-list";
+  if (!(zone.items || []).length) {
+    list.innerHTML = '<div class="empty-state">\u76ee\u524d\u6c92\u6709\u9805\u76ee\u3002</div>';
+  } else {
+    (zone.items || []).forEach((item) => {
+      const site = zoneItemSite(item);
+      const options = isAdmin()
+        ? {
+            extraActions: [
+              {
+                text: "\u7de8\u8f2f",
+                onClick: () => {
+                  backdrop.remove();
+                  openZoneItemEditModal(zone.id, item.id);
+                }
+              },
+              {
+                text: "\u79fb\u9664",
+                className: "small-btn delete-btn",
+                onClick: () => {
+                  zone.items = zone.items.filter((entry) => entry.id !== item.id);
+                  saveState();
+                  render();
+                  backdrop.remove();
+                  openZoneItemsModal(zone.id);
+                }
+              }
+            ]
+          }
+        : {};
+      list.append(createMiniSiteCard(site, options));
+    });
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "login-actions";
+  const close = document.createElement("button");
+  close.className = "ghost-btn";
+  close.type = "button";
+  close.textContent = "\u95dc\u9589";
+  close.addEventListener("click", () => backdrop.remove());
+  actions.append(close);
+
+  modal.append(head, list, actions);
+  backdrop.append(modal);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) backdrop.remove();
+  });
+  document.body.append(backdrop);
+}
+
+function openZoneItemEditModal(zoneId, itemId) {
+  if (!requireAdmin()) return;
+  const zone = state.zones.find((item) => item.id === zoneId);
+  const item = zone?.items?.find((entry) => entry.id === itemId);
+  if (!zone || !item) return;
+  const site = zoneItemSite(item);
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop info-modal-backdrop";
+  const modal = document.createElement("form");
+  modal.className = "login-modal paid-edit-modal";
+
+  const heading = document.createElement("h2");
+  heading.textContent = "\u7de8\u8f2f\u5c08\u5340\u9805\u76ee";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.value = site.name || "";
+  nameInput.placeholder = "\u7db2\u7ad9\u540d\u7a31";
+  const urlInput = document.createElement("input");
+  urlInput.type = "text";
+  urlInput.value = site.url || "";
+  urlInput.placeholder = "\u5c08\u5340\u529f\u80fd\u7db2\u5740";
+
+  const actions = document.createElement("div");
+  actions.className = "login-actions";
+  const cancel = document.createElement("button");
+  cancel.className = "ghost-btn";
+  cancel.type = "button";
+  cancel.textContent = "\u53d6\u6d88";
+  cancel.addEventListener("click", () => {
+    backdrop.remove();
+    openZoneItemsModal(zone.id);
+  });
+  const save = document.createElement("button");
+  save.className = "primary-btn";
+  save.type = "submit";
+  save.textContent = "\u5132\u5b58";
+  actions.append(cancel, save);
+
+  modal.append(heading, nameInput, urlInput, actions);
+  modal.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const name = nameInput.value.trim();
+    const url = normalizeUrlInput(urlInput.value);
+    const domain = normalizeDomain(url);
+    if (!name || !url || !domain) {
+      alert("\u8acb\u8f38\u5165\u7db2\u7ad9\u540d\u7a31\u8207\u7db2\u5740");
+      return;
+    }
+    item.name = name;
+    item.url = url;
+    item.domain = domain;
+    saveState();
+    render();
+    backdrop.remove();
+    openZoneItemsModal(zone.id);
+  });
+
+  backdrop.append(modal);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) backdrop.remove();
+  });
+  document.body.append(backdrop);
+  setTimeout(() => nameInput.focus(), 0);
 }
 
 els.toggleEditBtn.addEventListener("click", () => {

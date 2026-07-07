@@ -682,6 +682,32 @@ body:not(.is-admin) .admin-only {
   padding: 10px 12px;
 }
 
+.zone-summary-card {
+  gap: 8px;
+}
+
+.zone-title-button {
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.zone-title-button:hover {
+  border-color: #b9caff;
+  color: #1c49ff;
+}
+
+.zone-modal {
+  max-width: min(760px, calc(100vw - 32px));
+  width: 760px;
+}
+
+.zone-modal-list {
+  max-height: min(66vh, 620px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .pending-domain {
   color: #6e84aa;
   font-family: Consolas, monospace;
