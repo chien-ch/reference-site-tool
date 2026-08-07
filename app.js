@@ -437,6 +437,7 @@ function applyUserPayload(payload) {
   if (Array.isArray(payload.categories)) state.categories = normalizeCategories(payload.categories);
   if (Array.isArray(payload.sites)) state.sites = uniqueSites(payload.sites.map(normalizeSite).filter(Boolean));
   if (Array.isArray(payload.pending)) state.pending = uniqueSites(payload.pending.map(normalizeSite).filter(Boolean));
+  removeClassifiedFromPending();
   state.statuses = {};
   if (Array.isArray(payload.saved)) state.saved = new Set(payload.saved);
   if (Array.isArray(payload.zones)) state.zones = payload.zones;
@@ -444,6 +445,11 @@ function applyUserPayload(payload) {
   if (Array.isArray(payload.priceItems)) state.priceItems = payload.priceItems.map(normalizePriceItem).filter(Boolean);
   saveState();
   state.suppressDirty = false;
+}
+
+function removeClassifiedFromPending() {
+  const classifiedDomains = new Set(state.sites.map((site) => normalizeDomain(site.domain || site.url)).filter(Boolean));
+  state.pending = uniqueSites(state.pending.filter((site) => !classifiedDomains.has(normalizeDomain(site.domain || site.url))));
 }
 
 function setDirty(isDirty) {
@@ -1746,6 +1752,7 @@ function mergeOfficialSites(officialSites, officialPending) {
 
   state.sites = uniqueSites(nextSites);
   state.pending = uniqueSites(nextPending);
+  removeClassifiedFromPending();
 }
 
 function siteToCloudRow(site) {
