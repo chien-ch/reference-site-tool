@@ -80,6 +80,7 @@ const els = {
   backupInput: document.getElementById("backupInput"),
   exportBackupBtn: document.getElementById("exportBackupBtn"),
   importInput: document.getElementById("importInput"),
+  manualAddBtn: document.getElementById("manualAddBtn"),
   importStatus: document.getElementById("importStatus"),
   pendingCount: document.getElementById("pendingCount"),
   pendingList: document.getElementById("pendingList"),
@@ -948,7 +949,8 @@ function selectedCategoryIds() {
 
 function renderSites() {
   const sites = filteredSites();
-  const visible = sites.slice(0, state.visibleCount);
+  const shouldPaginate = state.selectedCategory === "all" && !String(state.search || "").trim();
+  const visible = shouldPaginate ? sites.slice(0, state.visibleCount) : sites;
   const label = state.selectedCategory === "all" ? "所有案例" : categoryLabel(state.selectedCategory);
   els.resultTitle.textContent = label;
   els.resultCount.textContent = `${sites.length} Results`;
@@ -960,7 +962,9 @@ function renderSites() {
     visible.forEach((site) => els.siteList.append(createSiteCard(site)));
   }
 
-  els.loadMoreBtn.style.display = sites.length > state.visibleCount ? "block" : "none";
+  if (els.loadMoreBtn) {
+    els.loadMoreBtn.style.display = shouldPaginate && sites.length > state.visibleCount ? "block" : "none";
+  }
 }
 
 function createSiteCard(site) {
@@ -1106,7 +1110,7 @@ async function checkSite(site) {
 }
 
 async function checkVisibleSites() {
-  const visible = filteredSites().slice(0, state.visibleCount);
+  const visible = filteredSites();
   for (const site of visible) {
     await checkSite(site);
   }
@@ -1805,6 +1809,105 @@ async function importSpreadsheet(file) {
   }
 
   render();
+}
+
+function openManualAddModal() {
+  if (!requireAdmin()) return;
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+
+  const modal = document.createElement("form");
+  modal.className = "login-modal";
+
+  const heading = document.createElement("h2");
+  heading.textContent = "\u624b\u52d5\u65b0\u589e\u7db2\u5740";
+
+  const nameLabel = document.createElement("label");
+  nameLabel.textContent = "\u7db2\u7ad9\u540d\u7a31";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.placeholder = "\u4f8b\u5982\uff1a\u67cf\u66f9\u7a7a\u9593\u8a2d\u8a08";
+  nameInput.required = true;
+  nameLabel.append(nameInput);
+
+  const urlLabel = document.createElement("label");
+  urlLabel.textContent = "\u7db2\u5740\u6216\u57df\u540d";
+  const urlInput = document.createElement("input");
+  urlInput.type = "text";
+  urlInput.placeholder = "\u4f8b\u5982\uff1abocdesign.com.tw";
+  urlInput.required = true;
+  urlLabel.append(urlInput);
+
+  const actions = document.createElement("div");
+  actions.className = "login-actions";
+
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "ghost-btn";
+  cancel.textContent = "\u53d6\u6d88";
+  cancel.addEventListener("click", () => backdrop.remove());
+
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.className = "primary-btn";
+  submit.textContent = "\u65b0\u589e";
+
+  actions.append(cancel, submit);
+  modal.append(heading, nameLabel, urlLabel, actions);
+  backdrop.append(modal);
+  document.body.append(backdrop);
+  nameInput.focus();
+
+  modal.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (addManualPendingSite(nameInput.value, urlInput.value)) {
+      backdrop.remove();
+    }
+  });
+
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) backdrop.remove();
+  });
+}
+
+function addManualPendingSite(nameValue, urlValue) {
+  const name = String(nameValue || "").trim();
+  const url = normalizeUrlInput(urlValue);
+  const domain = normalizeDomain(url);
+
+  if (!name || !domain) {
+    alert("\u8acb\u586b\u5beb\u7db2\u7ad9\u540d\u7a31\u8207\u7db2\u5740\u3002");
+    return false;
+  }
+
+  const existingDomains = new Set([...state.sites, ...state.pending].map((site) => normalizeDomain(site.domain || site.url)));
+  if (existingDomains.has(domain)) {
+    alert("\u9019\u500b\u57df\u540d\u5df2\u7d93\u5b58\u5728\uff0c\u4e0d\u6703\u91cd\u8907\u65b0\u589e\u3002");
+    return false;
+  }
+
+  const site = normalizeSite({
+    id: makeId("pending"),
+    name,
+    domain,
+    url,
+    status: "\u672a\u6aa2\u67e5",
+    addedAt: new Date().toISOString()
+  });
+
+  if (!site) {
+    alert("\u7db2\u5740\u683c\u5f0f\u7121\u6cd5\u8b80\u53d6\uff0c\u8acb\u78ba\u8a8d\u5f8c\u518d\u8a66\u4e00\u6b21\u3002");
+    return false;
+  }
+
+  state.pending = uniqueSites([site, ...state.pending]);
+  saveState();
+  render();
+  if (els.importStatus) {
+    els.importStatus.textContent = "\u5df2\u624b\u52d5\u65b0\u589e 1 \u7b46\u5f85\u5206\u985e\u8cc7\u6599\u3002";
+  }
+  return true;
 }
 
 async function importPaidSpreadsheet(file) {
@@ -2518,16 +2621,38 @@ function renderPaidSites() {
     groups.get(key).push(site);
   });
 
+  let groupIndex = 0;
   groups.forEach((sites, featureName) => {
     const groupCard = document.createElement("article");
     groupCard.className = "pending-card paid-feature-card";
-    const title = document.createElement("div");
-    title.className = "pending-title zone-title";
-    title.textContent = `${featureName}\uff08${sites.length}\uff09`;
-    const tagline = document.createElement("p");
-    tagline.className = "paid-tagline";
-    tagline.textContent = "\u5be6\u969b\u5831\u50f9\u8acb\u8a62\u554fPM";
-    groupCard.append(title, tagline);
+    const isOpen = groupIndex === 0;
+
+    const title = document.createElement("button");
+    title.className = "paid-accordion-head";
+    title.type = "button";
+
+    const arrow = document.createElement("span");
+    arrow.className = "paid-accordion-arrow";
+    arrow.textContent = isOpen ? "\u2304" : "\u203a";
+
+    const titleText = document.createElement("span");
+    titleText.className = "paid-accordion-title";
+    titleText.textContent = featureName;
+
+    const count = document.createElement("span");
+    count.className = "paid-accordion-count";
+    count.textContent = sites.length;
+
+    title.append(arrow, titleText, count);
+
+    const body = document.createElement("div");
+    body.className = "paid-accordion-body";
+    body.hidden = !isOpen;
+
+    title.addEventListener("click", () => {
+      body.hidden = !body.hidden;
+      arrow.textContent = body.hidden ? "\u203a" : "\u2304";
+    });
 
     sites.forEach((site) => {
       const item = document.createElement("article");
@@ -2577,9 +2702,11 @@ function renderPaidSites() {
         item.append(deleteBtn);
       }
 
-      groupCard.append(item);
+      body.append(item);
     });
+    groupCard.append(title, body);
     els.paidList.append(groupCard);
+    groupIndex += 1;
   });
 }
 
@@ -3229,10 +3356,12 @@ els.searchInput.addEventListener("input", () => {
   state.visibleCount = 12;
   renderSites();
 });
-els.loadMoreBtn.addEventListener("click", () => {
-  state.visibleCount += 12;
-  renderSites();
-});
+if (els.loadMoreBtn) {
+  els.loadMoreBtn.addEventListener("click", () => {
+    state.visibleCount += 12;
+    renderSites();
+  });
+}
 els.checkVisibleBtn.addEventListener("click", checkVisibleSites);
 els.exportBackupBtn.addEventListener("click", () => {
   if (!requireLogin()) return;
@@ -3249,6 +3378,9 @@ els.importInput.addEventListener("change", (event) => {
   }
   event.target.value = "";
 });
+if (els.manualAddBtn) {
+  els.manualAddBtn.addEventListener("click", openManualAddModal);
+}
 if (els.backupInput) {
   els.backupInput.addEventListener("change", (event) => {
     const file = event.target.files[0];
@@ -3291,9 +3423,6 @@ if (els.paidImportInput) {
     }
     event.target.value = "";
   });
-}
-if (els.priceBookBtn) {
-  els.priceBookBtn.addEventListener("click", openPriceBookModal);
 }
 els.clearPendingBtn.addEventListener("click", () => {
   if (!requireLogin()) return;
